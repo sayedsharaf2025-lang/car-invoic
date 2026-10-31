@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#10303a">
+<title>دفتر النقدية</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#10303a;--bg:#eef3f2;--card:#fff;--line:#d5e0de;--muted:#5b7279;--red:#b3362b;--green:#1d7a4b;--acc:#0e7c86;--on:#fff}
+@media(prefers-color-scheme:dark){:root{--ink:#e6f1f0;--bg:#0c1a1e;--card:#14272d;--line:#254149;--muted:#8fa9ae;--red:#ee7b6e;--green:#5cc98f;--acc:#46b8c2;--on:#0c1a1e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Cairo,Tahoma,"Segoe UI",sans-serif;padding:env(safe-area-inset-top,0) 0 76px;line-height:1.6}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.1rem;margin:0 0 12px;font-weight:600;color:var(--muted)}
+h2{font-size:1rem;margin:22px 0 8px}
+.total{background:var(--ink);color:var(--bg);border-radius:14px;padding:20px}
+.total small{opacity:.75}
+.total b{display:block;font-size:2.2rem;font-weight:800;line-height:1.2}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px}
+.row small{color:var(--muted);display:block}
+.num{font-weight:800;direction:ltr;unicode-bidi:plaintext;white-space:nowrap}
+.neg{color:var(--red)}.pos{color:var(--green)}
+label{display:block;font-size:.9rem;margin:12px 0 4px;color:var(--muted)}
+input,select{width:100%;font:inherit;padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+button{font:inherit;cursor:pointer}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg button{padding:12px;border:2px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-weight:600}
+.seg button.on.d{border-color:var(--red);background:var(--red);color:var(--on)}
+.seg button.on.c{border-color:var(--green);background:var(--green);color:var(--on)}
+.go{width:100%;margin-top:18px;padding:14px;border:0;border-radius:10px;background:var(--acc);color:var(--on);font-weight:800;font-size:1rem}
+.ghost{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 12px}
+.x{border:0;background:none;color:var(--red);font-size:1.1rem;padding:4px 8px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+nav{position:fixed;bottom:0;inset-inline:0;display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0)}
+nav button{border:0;background:none;color:var(--muted);padding:14px 4px;font-weight:600}
+nav button.on{color:var(--acc);box-shadow:inset 0 3px 0 var(--acc)}
+#toast{position:fixed;bottom:84px;inset-inline:16px;margin:auto;max-width:380px;background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;text-align:center;display:none}
+.empty{color:var(--muted);text-align:center;padding:24px 8px}
+.sum{background:var(--bg);border-style:dashed}
+.two+.two{margin-top:8px}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div id="toast" role="status"></div>
+<nav>
+<button data-t="bal">الرصيد</button>
+<button data-t="add">حركة جديدة</button>
+<button data-t="log">السجل</button>
+<button data-t="set">الإعدادات</button>
+</nav>
+<script src="supabase.js"></script>
+<script>
+const SB_URL='https://erkbzkmqrfoqaustyqoj.supabase.co',SB_KEY='sb_publishable_ssGBGLkA6cQvvD6soao2Ww_AdCP_SqN',CUR='ج.م';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const def=()=>({wallets:[{id:'w1',name:'كاش',type:'cash',opening:0},{id:'w2',name:'فيزا',type:'visa',opening:0}],accounts:['مصاريف البيت','فواتير الموبايل','عهدة السيارات'],tx:[]});
+let S={wallets:[],accounts:[],tx:[]},AID={},user,tab='bal',kind='d',fA='',fW='',fM='',fQ='';
+const $=s=>document.querySelector(s);
+const fmt=n=>n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+const bal=w=>S.tx.filter(t=>t.w===w.id).reduce((a,t)=>a+(t.k==='c'?t.a:-t.a),w.opening);
+const sign=n=>n<0?'neg':'pos';
+const typeName=t=>t==='visa'?'فيزا':'نقدي';
+const wName=id=>(S.wallets.find(w=>w.id===id)||{name:'(محذوفة)'}).name;
+const ck=r=>{if(r.error)throw r.error;return r};
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',2800)}
+const opts=(arr,sel,all)=>(all?`<option value="">${all}</option>`:'')+arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
+const wOpts=(sel,all)=>opts(S.wallets.map(w=>[w.id,`${w.name} (${typeName(w.type)})`]),sel,all);
+const aOpts=(sel,all)=>opts(S.accounts.map(a=>[a,a]),sel,all);
+
+async function load(){
+  const [w,a,t]=await Promise.all([sb.from('wallets').select('*').order('created_at'),sb.from('accounts').select('*').order('created_at'),sb.from('transactions').select('*').order('created_at')]);
+  [w,a,t].forEach(ck);
+  S.wallets=w.data.map(x=>({id:x.id,name:x.name,type:x.type,opening:+x.opening}));
+  AID={};const nm={};S.accounts=a.data.map(x=>{AID[x.name]=x.id;nm[x.id]=x.name;return x.name});
+  S.tx=t.data.map(x=>({id:x.id,k:x.kind,w:x.wallet_id,acc:nm[x.account_id],a:+x.amount,d:x.tx_date,n:x.note||''}));
+}
+async function pushAll(d){
+  const wm={},am={},id=()=>crypto.randomUUID();
+  d.wallets.forEach(w=>wm[w.id]=id());d.accounts.forEach(a=>am[a]=id());
+  if(d.wallets.length)ck(await sb.from('wallets').insert(d.wallets.map(w=>({id:wm[w.id],name:w.name,type:w.type,opening:w.opening||0}))));
+  if(d.accounts.length)ck(await sb.from('accounts').insert(d.accounts.map(a=>({id:am[a],name:a}))));
+  const tx=d.tx.filter(t=>wm[t.w]&&am[t.acc]).map(t=>({wallet_id:wm[t.w],account_id:am[t.acc],kind:t.k,amount:t.a,tx_date:t.d,note:t.n||''}));
+  for(let i=0;i<tx.length;i+=500)ck(await sb.from('transactions').insert(tx.slice(i,i+500)));
+}
+async function seed(){
+  const k='seeded_'+user.id;
+  if(localStorage.getItem(k)||S.wallets.length||S.accounts.length)return;
+  let d=def();try{const l=JSON.parse(localStorage.getItem('cashbook_v1'));if(l&&l.wallets&&l.accounts&&l.tx)d=l}catch(e){}
+  await pushAll(d);localStorage.setItem(k,'1');await load();
+}
+async function run(fn,ok){try{await fn();await load();if(ok)toast(ok);return true}catch(e){toast('تعذر التنفيذ: '+(e.message||e));return false}}
+async function boot(u){user=u;try{await load();await seed()}catch(e){toast('تعذر تحميل البيانات: '+(e.message||e))}render()}
+
+function vAuth(){
+  return `<h1>دفتر النقدية</h1><div class="total"><small>سجّل الدخول لمزامنة بياناتك بين أجهزتك</small></div>
+  <label for="em">البريد الإلكتروني</label><input id="em" type="email" autocomplete="email" dir="ltr">
+  <label for="pw">كلمة المرور</label><input id="pw" type="password" autocomplete="current-password" dir="ltr">
+  <button class="go" onclick="auth(false)">تسجيل الدخول</button>
+  <button class="go ghost" style="margin-top:10px" onclick="auth(true)">إنشاء حساب جديد</button>`;
+}
+async function auth(up){
+  const email=$('#em').value.trim(),password=$('#pw').value;
+  if(!email||password.length<6)return toast('اكتب البريد وكلمة مرور من 6 أحرف على الأقل');
+  const r=up?await sb.auth.signUp({email,password}):await sb.auth.signInWithPassword({email,password});
+  if(r.error)return toast(r.error.message);
+  if(!r.data.session)return toast('تم إنشاء الحساب. أكّد بريدك الإلكتروني ثم سجّل الدخول');
+  await boot(r.data.session.user);
+}
+async function out(){await sb.auth.signOut();user=null;S={wallets:[],accounts:[],tx:[]};tab='bal';render()}
+
+function vBal(){
+  const total=S.wallets.reduce((a,w)=>a+bal(w),0);
+  let h=`<h1>دفتر النقدية</h1><div class="total"><small>إجمالي الرصيد المتبقي</small><b class="num">${fmt(total)} ${CUR}</b></div><h2>رصيد كل محفظة</h2>`;
+  h+=S.wallets.map(w=>{const b=bal(w);return `<div class="row"><div>${esc(w.name)}<small>${typeName(w.type)}</small></div><span class="num ${sign(b)}">${fmt(b)} ${CUR}</span></div>`}).join('');
+  h+='<h2>حركة كل حساب</h2>';
+  h+=S.accounts.map(a=>{const d=S.tx.filter(t=>t.acc===a&&t.k==='d').reduce((s,t)=>s+t.a,0),c=S.tx.filter(t=>t.acc===a&&t.k==='c').reduce((s,t)=>s+t.a,0);
+    return `<div class="row"><div>${esc(a)}<small>مدين ${fmt(d)} · دائن ${fmt(c)}</small></div><span class="num ${sign(c-d)}">${fmt(c-d)} ${CUR}</span></div>`}).join('');
+  return h;
+}
+function vAdd(){
+  return `<h1>حركة جديدة</h1>
+  <div class="seg"><button id="kd" class="d" onclick="setKind('d')">صرف (مدين)</button><button id="kc" class="c" onclick="setKind('c')">إيداع (دائن)</button></div>
+  <label for="aw">من / إلى محفظة</label><select id="aw">${wOpts()}</select>
+  <label for="aa">الحساب</label><select id="aa">${aOpts()}</select>
+  <div class="two"><div><label for="am">المبلغ</label><input id="am" type="number" inputmode="decimal" min="0" step="0.01"></div>
+  <div><label for="ad">التاريخ</label><input id="ad" type="date" value="${today()}"></div></div>
+  <label for="an">ملاحظة</label><input id="an" maxlength="120">
+  <button class="go" id="sv" onclick="addTx()"></button>`;
+}
+function setKind(k){kind=k;$('#kd').className='d'+(k==='d'?' on':'');$('#kc').className='c'+(k==='c'?' on':'');$('#sv').textContent=k==='d'?'سجّل الصرف':'سجّل الإيداع'}
+async function addTx(){
+  const a=parseFloat($('#am').value);
+  if(!(a>0))return toast('اكتب مبلغًا أكبر من صفر');
+  if(!S.wallets.length||!S.accounts.length)return toast('أضف محفظة وحسابًا من الإعدادات');
+  const row={wallet_id:$('#aw').value,account_id:AID[$('#aa').value],kind,amount:Math.round(a*100)/100,tx_date:$('#ad').value||today(),note:$('#an').value.trim()};
+  $('#sv').disabled=true;
+  if(await run(async()=>ck(await sb.from('transactions').insert(row)),kind==='d'?'تم تسجيل الصرف':'تم تسجيل الإيداع'))go('bal');else $('#sv').disabled=false;
+}
+function filt(){return S.tx.map((t,i)=>({...t,i})).filter(t=>(!fA||t.acc===fA)&&(!fW||t.w===fW)&&(!fM||t.d.startsWith(fM))&&(!fQ||(t.n+' '+t.acc).includes(fQ))).sort((x,y)=>y.d.localeCompare(x.d)||y.i-x.i)}
+function vLog(){
+  return `<h1>السجل</h1><div class="two"><select aria-label="الحساب" onchange="fA=this.value;rl()">${aOpts(fA,'كل الحسابات')}</select><select aria-label="المحفظة" onchange="fW=this.value;rl()">${wOpts(fW,'كل المحافظ')}</select></div><div class="two"><input type="month" aria-label="الشهر" value="${fM}" onchange="fM=this.value;rl()"><input type="search" aria-label="بحث" placeholder="بحث في الملاحظات" value="${esc(fQ)}" oninput="fQ=this.value;rl()"></div><div id="ll">${list(filt())}</div>`;
+}
+function list(l){
+  if(!l.length)return '<p class="empty">لا توجد حركات بعد. سجّل أول حركة من تبويب «حركة جديدة».</p>';
+  const d=l.filter(t=>t.k==='d').reduce((s,t)=>s+t.a,0),c=l.filter(t=>t.k==='c').reduce((s,t)=>s+t.a,0);
+  return `<div class="row sum"><div>الإجمالي (${l.length} حركة)<small>مدين ${fmt(d)} · دائن ${fmt(c)}</small></div><span class="num ${sign(c-d)}">${fmt(c-d)}</span></div>`+l.map(t=>`<div class="row"><div>${esc(t.acc)} · ${esc(wName(t.w))}<small>${t.d}${t.n?' — '+esc(t.n):''}</small></div><span class="num ${t.k==='c'?'pos':'neg'}">${t.k==='c'?'+':'−'}${fmt(t.a)}</span><button class="x" aria-label="حذف" onclick="delTx('${t.id}')">✕</button></div>`).join('');
+}
+function rl(){$('#ll').innerHTML=list(filt())}
+async function delTx(id){if(confirm('حذف هذه الحركة؟')){await run(async()=>ck(await sb.from('transactions').delete().eq('id',id)));render()}}
+function vSet(){
+  return `<h1>الإعدادات</h1><div class="row"><div>الحساب<small dir="ltr">${esc(user.email||'')}</small></div><button class="ghost" onclick="out()">تسجيل الخروج</button></div><h2>المحافظ</h2>`+S.wallets.map(w=>`<div class="row"><div>${esc(w.name)}<small>${typeName(w.type)} · رصيد افتتاحي ${fmt(w.opening)}</small></div><button class="x" aria-label="حذف" onclick="delW('${w.id}')">✕</button></div>`).join('')+
+  `<label for="wn">إضافة محفظة</label><input id="wn" placeholder="مثال: فيزا البنك الأهلي">
+  <div class="two"><div><label for="wt">النوع</label><select id="wt"><option value="visa">فيزا</option><option value="cash">نقدي</option></select></div><div><label for="wo">الرصيد الافتتاحي</label><input id="wo" type="number" inputmode="decimal" step="0.01" value="0"></div></div>
+  <button class="go" onclick="addW()">أضف المحفظة</button>
+  <h2>الحسابات</h2>`+S.accounts.map(a=>`<div class="row"><div>${esc(a)}</div><button class="x" aria-label="حذف" onclick="delA(this.dataset.a)" data-a="${esc(a)}">✕</button></div>`).join('')+
+  `<label for="acn">إضافة حساب</label><input id="acn" placeholder="مثال: مصاريف المدرسة"><button class="go" onclick="addA()">أضف الحساب</button>
+  <h2>نسخة احتياطية</h2><div class="two"><button class="ghost" onclick="exp()">تصدير</button><button class="ghost" onclick="$('#imp').click()">استيراد</button></div>
+  <input id="imp" type="file" accept=".json,application/json" hidden onchange="imp(this.files[0])">`;
+}
+async function addW(){const n=$('#wn').value.trim();if(!n)return toast('اكتب اسم المحفظة');if(await run(async()=>ck(await sb.from('wallets').insert({name:n,type:$('#wt').value,opening:parseFloat($('#wo').value)||0}))))render()}
+async function addA(){const n=$('#acn').value.trim();if(!n)return toast('اكتب اسم الحساب');if(S.accounts.includes(n))return toast('الحساب موجود بالفعل');if(await run(async()=>ck(await sb.from('accounts').insert({name:n}))))render()}
+async function delW(id){if(S.tx.some(t=>t.w===id))return toast('لا يمكن حذف محفظة عليها حركات');if(confirm('حذف المحفظة؟')){await run(async()=>ck(await sb.from('wallets').delete().eq('id',id)));render()}}
+async function delA(a){if(S.tx.some(t=>t.acc===a))return toast('لا يمكن حذف حساب عليه حركات');if(confirm('حذف الحساب؟')){await run(async()=>ck(await sb.from('accounts').delete().eq('id',AID[a])));render()}}
+async function exp(){
+  const txt=JSON.stringify(S,null,1),name='cashbook-'+today()+'.json',C=window.Capacitor,P=C&&C.Plugins;
+  if(C&&C.isNativePlatform&&C.isNativePlatform()&&P&&P.Filesystem&&P.Share){
+    try{const f=await P.Filesystem.writeFile({path:name,data:txt,directory:'CACHE',encoding:'utf8'});await P.Share.share({title:name,url:f.uri})}catch(e){toast('تعذر التصدير: '+(e.message||e))}
+    return}
+  const b=new Blob([txt],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='cashbook-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function imp(f){if(!f)return;const r=new FileReader();r.onload=async()=>{let d;try{d=JSON.parse(r.result);if(!Array.isArray(d.wallets)||!Array.isArray(d.accounts)||!Array.isArray(d.tx))throw 0}catch(e){return toast('الملف غير صالح')}
+  if(!confirm('سيتم استبدال كل بياناتك الحالية. متابعة؟'))return;
+  const none='00000000-0000-0000-0000-000000000000';
+  if(await run(async()=>{ck(await sb.from('transactions').delete().neq('id',none));ck(await sb.from('wallets').delete().neq('id',none));ck(await sb.from('accounts').delete().neq('id',none));await pushAll(d)},'تم الاستيراد'))render()};r.readAsText(f)}
+function go(t){tab=t;render()}
+function render(){
+  const nav=document.querySelector('nav');
+  if(user===undefined){$('#app').innerHTML='<p class="empty">جارٍ التحميل…</p>';nav.style.display='none';return}
+  if(!user){$('#app').innerHTML=vAuth();nav.style.display='none';return}
+  nav.style.display='';
+  $('#app').innerHTML={bal:vBal,add:vAdd,log:vLog,set:vSet}[tab]();
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+  if(tab==='add')setKind(kind);
+  scrollTo(0,0);
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.t));
+render();
+sb.auth.getSession().then(({data})=>{if(data.session)boot(data.session.user);else{user=null;render()}});
+</script>
+</body>
+</html>

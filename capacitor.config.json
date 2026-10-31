@@ -1,0 +1,6 @@
+{
+  "appId": "com.mycashbook.app",
+  "appName": "دفتر النقدية",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}

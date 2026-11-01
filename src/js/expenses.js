@@ -1,4 +1,4 @@
-let S={wallets:[],accounts:[],tx:[]},kind='d',F={a:'',w:'',m:'',q:''},lastW='';
+let S={wallets:[],accounts:[],tx:[]},kind='d',F={a:'',w:'',m:'',q:''},lastW='',transferMode=false;
 const TYPES={cash:'نقدي',visa:'فيزا',bank:'بنك'};
 const ADJ_ACCOUNT='تسوية';
 const typeName=t=>TYPES[t]||t;
@@ -6,7 +6,8 @@ const wById=id=>S.wallets.find(w=>w.id===id);
 const aById=id=>S.accounts.find(a=>a.id===id);
 const wName=id=>(wById(id)||{name:'(محذوفة)'}).name;
 const aName=id=>(aById(id)||{name:'(محذوف)'}).name;
-const bal=w=>round2(S.tx.reduce((a,t)=>t.w===w.id?a+(t.k==='c'?t.a:-t.a):a,w.opening));
+const txWalletDelta=(t,id)=>t.k==='t'?(t.w===id?-t.a:t.to===id?t.a:0):t.w===id?(t.k==='c'?t.a:-t.a):0;
+const bal=w=>round2(S.tx.reduce((a,t)=>a+txWalletDelta(t,w.id),w.opening));
 const sign=n=>n<0?'neg':'pos';
 const opts=(arr,sel,all)=>(all?`<option value="">${all}</option>`:'')+arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
 const wOpts=(sel,all)=>opts(S.wallets.map(w=>[w.id,`${w.name} (${typeName(w.type)})`]),sel,all);
@@ -20,7 +21,7 @@ async function loadExpenses(){
   ]);
   S.wallets=w.map(x=>({id:x.id,name:x.name,type:x.type,opening:+x.opening_balance}));
   S.accounts=a.map(x=>({id:x.id,name:x.name}));
-  S.tx=t.map(x=>({id:x.id,k:x.kind,w:x.wallet_id,ac:x.account_id,a:+x.amount,d:x.tx_date,n:x.note||'',adj:!!x.is_adjustment}));
+  S.tx=t.map(x=>({id:x.id,k:x.kind,w:x.wallet_id,to:x.to_wallet_id||null,ac:x.account_id,a:+x.amount,d:x.tx_date,n:x.note||'',source:x.source||'',adj:!!x.is_adjustment}));
 }
 async function reloadExp(){await loadExpenses();render()}
 
@@ -29,7 +30,8 @@ function viewExpenses(){
   if(!LOADED)return loadingHtml();
   const total=round2(S.wallets.reduce((a,w)=>a+bal(w),0));
   let h=`<h1>المصاريف</h1>
-  <div class="two"><button class="go" style="margin:0" onclick="go('add')">+ حركة جديدة</button><button class="ghost" onclick="go('log')">السجل</button></div>
+  <div class="two"><button class="go" style="margin:0" onclick="go('add')">+ حركة جديدة</button><button class="ghost" onclick="go('log')">السجل</button>
+  <button class="ghost wide" onclick="go('report')">التقارير الشهرية (دائن / مدين)</button></div>
   <button class="ghost wide" onclick="go('manage')">المحافظ والحسابات</button>
   <div class="total"><small>إجمالي الرصيد المتبقي</small><b class="num">${fmt(total)} ج.م</b></div>
   <h2>رصيد كل محفظة</h2>`;
@@ -68,19 +70,23 @@ function viewAdd(){
   if(!LOADED)return loadingHtml();
   if(!S.wallets.length||!S.accounts.length)
     return `<h1>حركة جديدة</h1>`+emptyBox('📒','محتاج محفظة وحساب الأول','لازم تضيف محفظة واحدة وحساب واحد على الأقل قبل تسجيل أي حركة.','المحافظ والحسابات',"go('manage')");
-  kind='d';
-  return `<h1>حركة جديدة</h1>
-  <div class="two seg"><button id="kd" class="ghost on" onclick="setKind('d')">مصروف</button><button id="kc" class="ghost" onclick="setKind('c')">إيداع</button></div>
+  kind='d';transferMode=false;
+  return `<h1>حركة مالية جديدة</h1>
+  <div class="two seg"><button id="kd" class="ghost on" onclick="setKind('d')">صرف</button><button id="kc" class="ghost" onclick="setKind('c')">قبض / إيداع</button></div>
+  <button class="ghost wide" onclick="setTransferMode()">⇄ تحويل بين محفظتين</button>
   <label>المحفظة</label><select id="fw">${wOpts(lastW)}</select>
-  <label>الحساب</label><select id="fa">${aOpts('')}</select>
+  <div id="toWalletBox" hidden><label>إلى محفظة</label><select id="tw">${wOpts('')}</select></div>
+  <div id="accountBox"><label>الحساب / البند</label><select id="fa">${aOpts('')}</select></div>
   <label>المبلغ</label><input id="am" type="text" inputmode="decimal" dir="ltr" placeholder="0.00">
   <label>التاريخ</label><input id="dt" type="date" value="${today()}">
+  <label>مصدر الأموال / الجهة</label><input id="src" maxlength="120" placeholder="عميل، مورد، جهة، أو مصدر التمويل">
   <label>ملاحظة</label>
   <div class="inrow"><input id="nt" maxlength="120" placeholder="اكتب أو اتكلم"><button id="mic" class="mic" type="button" onclick="dictate()" aria-label="إدخال صوتي">🎤</button></div>
   <button class="go" onclick="saveTx()">حفظ</button>
   <button class="ghost wide" onclick="history.back()">إلغاء</button>`;
 }
-function setKind(k){kind=k;$('#kd').classList.toggle('on',k==='d');$('#kc').classList.toggle('on',k==='c')}
+function setKind(k){transferMode=false;kind=k;$('#kd').classList.toggle('on',k==='d');$('#kc').classList.toggle('on',k==='c');$('#toWalletBox').hidden=true;$('#accountBox').hidden=false}
+function setTransferMode(){transferMode=true;$('#toWalletBox').hidden=false;$('#accountBox').hidden=true;$('#kd').classList.remove('on');$('#kc').classList.remove('on')}
 async function dictate(){
   const b=$('#mic');b.classList.add('rec');
   try{
@@ -90,10 +96,11 @@ async function dictate(){
   finally{b.classList.remove('rec')}
 }
 async function saveTx(){
-  const wallet_id=$('#fw').value,account_id=$('#fa').value,amount=parseFloat(num($('#am').value)),tx_date=$('#dt').value||today(),note=$('#nt').value.trim().slice(0,120);
+  const wallet_id=$('#fw').value,to_wallet_id=transferMode?$('#tw').value:null,account_id=transferMode?null:$('#fa').value,amount=parseFloat(num($('#am').value)),tx_date=$('#dt').value||today(),note=$('#nt').value.trim().slice(0,120),source=$('#src').value.trim().slice(0,120);
   if(!(amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');
+  if(transferMode&&(!to_wallet_id||to_wallet_id===wallet_id))return toast('اختار محفظتين مختلفتين');
   await run(async()=>{
-    ck(await sb.from('transactions').insert({wallet_id,account_id,kind,amount:round2(amount),tx_date,note}));
+    ck(await sb.from('transactions').insert({wallet_id,to_wallet_id,account_id,kind:transferMode?'t':kind,amount:round2(amount),tx_date,note,source}));
     lastW=wallet_id;await loadExpenses();go('exp',null,true);
   },'تم الحفظ');
 }

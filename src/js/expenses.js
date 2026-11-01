@@ -228,9 +228,9 @@ async function importData(){
     for(const t of d.transactions){
       const w=wmap[t.wallet],a=amap[String(t.account||'').trim()],amt=+t.amount,note=String(t.note||'').slice(0,120);
       if(!w||!a||!(amt>0)||!/^[dc]$/.test(t.kind)||!/^\d{4}-\d{2}-\d{2}$/.test(t.date)){skipped++;continue}
-      const k=key(w,a,t.kind,amt,t.date,note);
+      const k=key(w,a||to,t.kind,amt,t.date,note);
       if(have[k]>0){have[k]--;skipped++;continue}
-      rows.push({wallet_id:w,account_id:a,kind:t.kind,amount:round2(amt),tx_date:t.date,note,is_adjustment:!!t.adjustment});
+      rows.push({wallet_id:w,to_wallet_id:to,account_id:a,kind:t.kind,amount:round2(amt),tx_date:t.date,note,source:String(t.source||'').slice(0,120),is_adjustment:!!t.adjustment});
     }
     for(let i=0;i<rows.length;i+=200)ck(await sb.from('transactions').insert(rows.slice(i,i+200)));
     await reloadExp();
@@ -246,9 +246,10 @@ function viewReport(){
  '<label>'+(F.w?'المحفظة':'الحساب')+'</label><select id="rsel" onchange="F.'+(F.w?'w':'a')+'=this.value;renderReport()">'+(F.w?wOpts(F.w==='all'?'':F.w,'اختار المحفظة'):aOpts(F.a,'اختار الحساب'))+'</select><div id="reportBody">'+reportHtml(m)+'</div>';
 }
 function renderReport(){const m=$('#rm')?$('#rm').value:F.m||today().slice(0,7);F.m=m;const el=$('#reportBody');if(el)el.innerHTML=reportHtml(m)}
+function reportMonthEnd(m){const y=Number(m.slice(0,4)),mo=Number(m.slice(5,7)),d=new Date(y,mo,0).getDate();return m+'-'+String(d).padStart(2,'0')}
 function reportHtml(m){
  const walletMode=!!F.w,isW=walletMode&&F.w!=='all',id=isW?F.w:F.a;if(walletMode&&F.w==='all')return '<p class="empty">اختار المحفظة لعرض التقرير.</p>';if(!id||id==='all')return '<p class="empty">اختار محفظة أو حساب لعرض التقرير.</p>';
- const start=m+'-01',end=new Date(Number(m.slice(0,4)),Number(m.slice(5,7)),0).toISOString().slice(0,10),month=S.tx.filter(t=>t.d>=start&&t.d<=end);
+ const start=m+'-01',end=reportMonthEnd(m),month=S.tx.filter(t=>t.d>=start&&t.d<=end);
  let opening=0,credit=0,debit=0,rows=[];
  if(isW){const w=wById(id);if(!w)return '<p class="empty">المحفظة غير موجودة.</p>';opening=w.opening+S.tx.filter(t=>t.d<start).reduce((v,t)=>v+txWalletDelta(t,id),0);rows=month.filter(t=>t.w===id||t.to===id);credit=rows.reduce((v,t)=>v+(t.k==='c'&&t.w===id?t.a:t.k==='t'&&t.to===id?t.a:0),0);debit=rows.reduce((v,t)=>v+(t.k==='d'&&t.w===id?t.a:t.k==='t'&&t.w===id?t.a:0),0);}
  else{rows=month.filter(t=>t.ac===id&&t.k!=='t');opening=S.tx.filter(t=>t.d<start&&t.ac===id&&t.k!=='t').reduce((v,t)=>v+(t.k==='c'?t.a:-t.a),0);credit=rows.reduce((v,t)=>v+(t.k==='c'?t.a:0),0);debit=rows.reduce((v,t)=>v+(t.k==='d'?t.a:0),0);}
@@ -259,7 +260,7 @@ function reportHtml(m){
  return h+rows.sort((a,b)=>a.d.localeCompare(b.d)).map(t=>{const dir=t.k==='t'?(t.to===id?'دائن تحويل':'مدين تحويل'):t.k==='c'?'دائن':'مدين';const amount=(t.k==='t'?(t.to===id?'+':'−'):t.k==='c'?'+':'−')+fmt(t.a);return '<div class="row"><div>'+dir+' · '+esc(t.n||(t.k==='t'?'تحويل بين المحافظ':''))+'<small>'+esc(t.d)+' · '+esc(t.source||(t.k==='t'?'تحويل داخلي':aName(t.ac)))+'</small></div><b class="num '+(dir.startsWith('دائن')?'pos':'neg')+'">'+amount+'</b></div>'}).join('');
 }
 async function exportReport(m,id,isW){
- const start=m+'-01',end=new Date(Number(m.slice(0,4)),Number(m.slice(5,7)),0).toISOString().slice(0,10),rows=S.tx.filter(t=>t.d>=start&&t.d<=end&&(isW?(t.w===id||t.to===id):t.ac===id));
+ const start=m+'-01',end=reportMonthEnd(m),rows=S.tx.filter(t=>t.d>=start&&t.d<=end&&(isW?(t.w===id||t.to===id):t.ac===id));
  const data=[['التاريخ','النوع','المحفظة','المحفظة المستقبلة','الحساب','مصدر الأموال','البيان','المبلغ']];
  rows.forEach(t=>data.push([t.d,t.k==='t'?'تحويل':t.k==='c'?'دائن':'مدين',wName(t.w),t.to?wName(t.to):'',t.ac?aName(t.ac):'',t.source||'',t.n,t.a]));
  const csv='\uFEFF'+data.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');

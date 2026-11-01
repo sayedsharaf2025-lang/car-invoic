@@ -116,3 +116,5 @@ body.cam-active nav,body.cam-active #toast,body.cam-active #modal{display:none!i
 .pc-edit-tools input{flex:1;min-width:100px;accent-color:#16bd8b}
 .pc-edit-note{margin-top:5px;color:#dce8e8}
 #pc-review canvas{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+
+#pro-camera [hidden],#pro-camera .pc-edit-tools[hidden],#pro-camera .pc-live-tools[hidden]{display:none!important}

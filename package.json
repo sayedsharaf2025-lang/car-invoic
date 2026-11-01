@@ -16,6 +16,7 @@
     "@capacitor/share": "^6.0.0",
     "@capacitor-community/speech-recognition": "^6.0.0",
     "@supabase/supabase-js": "2.58.0",
-    "jspdf": "^2.5.1"
+    "jspdf": "^2.5.1",
+    "@capacitor-community/camera-preview": "6.0.1"
   }
 }

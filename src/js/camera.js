@@ -12,7 +12,7 @@ function cameraOverlayHtml(){return `<section id="pro-camera" role="dialog" aria
 <div class="pc-edit-tools" id="pc-edit-tools" hidden>
 <div class="pc-edit-row"><button onclick="proCameraRotate()">↻ تدوير</button><button id="pc-enhance" class="selected" onclick="proCameraToggleEnhance()">تحسين الوضوح</button><button id="pc-gray" onclick="proCameraToggleGray()">أبيض وأسود</button></div>
 <label>قص الحواف <input id="pc-crop" type="range" min="0" max="15" value="0" oninput="proCameraSetCrop(this.value)"></label>
-<div class="pc-edit-row"><button id="pc-perspective" onclick="proCameraTogglePerspective()">تصحيح المنظور</button><button onclick="proCameraResetCorners()">إعادة ضبط الأركان</button></div><div class="pc-edit-note" id="pc-corner-note">اسحب الدوائر الأربع لتحديد أركان الورقة بدقة</div></div>
+<div class="pc-edit-row"><button id="pc-auto-detect" onclick="proCameraAutoDetect()">اكتشاف الورقة تلقائيًا</button><button id="pc-perspective" onclick="proCameraTogglePerspective()">تصحيح المنظور</button><button onclick="proCameraResetCorners()">إعادة ضبط الأركان</button></div><div class="pc-edit-note" id="pc-corner-note">اسحب الدوائر الأربع لتحديد أركان الورقة بدقة</div></div>
 <div class="pc-actions" id="pc-actions"><button class="pc-cancel" onclick="proCameraCancel()">إلغاء</button><button class="pc-shutter" id="pc-shutter" onclick="proCameraCapture()"><span></span></button><button class="pc-flip" onclick="proCameraFlip()">↻</button></div>
 <div class="pc-review-actions" id="pc-review-actions" hidden><button class="pc-cancel" onclick="proCameraRetake()">إعادة التصوير</button><button class="pc-accept" onclick="proCameraAccept()">استخدام الصورة</button></div>
 <div class="pc-status" id="pc-status">جارٍ تشغيل الكاميرا…</div></div></section>`;}
@@ -45,15 +45,31 @@ async function proCameraCapture(){
 }
 function proCameraLoadImage(blob){return new Promise((resolve,reject)=>{const u=URL.createObjectURL(blob),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('تعذر قراءة الصورة'))};im.src=u})}
 async function proCameraRender(){
- if(!pcOriginal)return;const im=pcOriginal,rot=((pcRotation%360)+360)%360,swap=rot===90||rot===270;
- const w=swap?im.height:im.width,h=swap?im.width:im.height,cut=Math.round(Math.min(w,h)*pcCrop/100),cw=Math.max(1,w-2*cut),ch=Math.max(1,h-2*cut);
- const c=document.getElementById('pc-canvas');c.width=cw;c.height=ch;const x=c.getContext('2d',{alpha:false});
- x.save();x.translate(w/2,h/2);x.rotate(rot*Math.PI/180);x.drawImage(im,-im.width/2,-im.height/2);x.restore();
- if(pcCrop){const data=x.getImageData(cut,cut,cw,ch);c.width=cw;c.height=ch;x.putImageData(data,0,0)}
- if(pcPerspective){const warped=pcPerspectiveCanvas(c);c.width=warped.width;c.height=warped.height;c.getContext('2d').drawImage(warped,0,0)}
- if(pcEnhance||pcGray){const d=x.getImageData(0,0,cw,ch),a=d.data;for(let i=0;i<a.length;i+=4){let lum=.299*a[i]+.587*a[i+1]+.114*a[i+2];if(pcGray){let v=lum>155?255:lum<95?0:Math.round((lum-95)*4.25);a[i]=a[i+1]=a[i+2]=v}else if(pcEnhance){const v=Math.max(0,Math.min(255,(lum-128)*1.22+138));const ratio=lum? v/lum:1;a[i]=Math.min(255,a[i]*ratio);a[i+1]=Math.min(255,a[i+1]*ratio);a[i+2]=Math.min(255,a[i+2]*ratio)}}x.putImageData(d,0,0)}
- if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);const out=await new Promise(res=>c.toBlob(res,'image/jpeg',.94));if(!out)throw Error('فشل تجهيز الصورة');proCameraBlobUrl=URL.createObjectURL(out);
+ if(!pcOriginal)return;
+ const im=pcOriginal,rot=((pcRotation%360)+360)%360,swap=rot===90||rot===270;
+ const w=swap?im.height:im.width,h=swap?im.width:im.height;
+ const work=document.createElement('canvas');work.width=w;work.height=h;
+ let ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});
+ ctx.save();ctx.translate(w/2,h/2);ctx.rotate(rot*Math.PI/180);ctx.drawImage(im,-im.width/2,-im.height/2);ctx.restore();
+ if(pcCrop){const cut=Math.round(Math.min(w,h)*pcCrop/100),cw=Math.max(1,w-2*cut),ch=Math.max(1,h-2*cut),tmp=document.createElement('canvas');tmp.width=cw;tmp.height=ch;tmp.getContext('2d').drawImage(work,cut,cut,cw,ch,0,0,cw,ch);work.width=cw;work.height=ch;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
+ if(pcPerspective){const warped=pcPerspectiveCanvas(work);work.width=warped.width;work.height=warped.height;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(warped,0,0)}
+ const iw=work.width,ih=work.height;
+ if(pcEnhance||pcGray){
+  const frame=ctx.getImageData(0,0,iw,ih),src=frame.data;
+  if(pcEnhance){
+   const blur=document.createElement('canvas');blur.width=iw;blur.height=ih;const bc=blur.getContext('2d');bc.filter='blur(1.15px)';bc.drawImage(work,0,0);
+   const soft=bc.getImageData(0,0,iw,ih).data;
+   for(let i=0;i<src.length;i+=4){for(let k=0;k<3;k++){const v=src[i+k],detail=v-soft[i+k];src[i+k]=Math.max(0,Math.min(255,(v-128)*1.045+128+detail*.32))}}
+  }
+  if(pcGray){for(let i=0;i<src.length;i+=4){const lum=.2126*src[i]+.7152*src[i+1]+.0722*src[i+2];src[i]=src[i+1]=src[i+2]=lum}}
+  ctx.putImageData(frame,0,0);
+ }
+ const c=document.getElementById('pc-canvas');c.width=iw;c.height=ih;c.getContext('2d',{alpha:false}).drawImage(work,0,0);
+ const stage=document.querySelector('.pc-crop-stage');if(stage){stage.style.width='min(100%, '+iw+'px)';stage.style.aspectRatio=iw+'/'+ih}
+ if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);
+ const out=await new Promise(res=>c.toBlob(res,'image/jpeg',.97));if(!out)throw Error('فشل تجهيز الصورة');proCameraBlobUrl=URL.createObjectURL(out);
  const e=document.getElementById('pc-enhance'),g=document.getElementById('pc-gray');if(e)e.classList.toggle('selected',pcEnhance);if(g)g.classList.toggle('selected',pcGray);
+ proCameraUpdateCorners();
 }
 async function proCameraRetake(){pcOriginal=null;document.getElementById('pc-review').hidden=true;document.getElementById('pc-guide').hidden=false;document.getElementById('pc-live-tools').hidden=false;document.getElementById('pc-actions').hidden=false;document.getElementById('pc-edit-tools').hidden=true;document.getElementById('pc-review-actions').hidden=true;if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;try{await proCameraStart()}catch(e){proCameraSetStatus('تعذر إعادة تشغيل الكاميرا')}}
 async function proCameraRotate(){pcRotation=(pcRotation+90)%360;await proCameraRender()}
@@ -71,3 +87,44 @@ function proCameraUpdateCorners(){const p=document.getElementById('pc-poly');if(
 (function(){document.addEventListener('pointerdown',e=>{const n=e.target.closest?.('#pc-corners circle');if(!n||!pcPerspective)return;pcDrag=Number(n.dataset.corner);e.preventDefault()});document.addEventListener('pointermove',e=>{if(pcDrag<0||!pcPerspective)return;const svg=document.getElementById('pc-corners'),r=svg.getBoundingClientRect();pcCorners[pcDrag]=[Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))];proCameraUpdateCorners()});document.addEventListener('pointerup',()=>{pcDrag=-1})})();
 function pcSolveHomography(q){const A=[],b=[],dst=[[0,0],[1,0],[1,1],[0,1]];for(let i=0;i<4;i++){const u=dst[i][0],v=dst[i][1],x=q[i][0],y=q[i][1];A.push([u,v,1,0,0,0,-u*x,-v*x]);b.push(x);A.push([0,0,0,u,v,1,-u*y,-v*y]);b.push(y)}for(let i=0;i<8;i++){let k=i;for(let j=i+1;j<8;j++)if(Math.abs(A[j][i])>Math.abs(A[k][i]))k=j;if(Math.abs(A[k][i])<1e-10)throw Error('الأركان متداخلة');[A[i],A[k]]=[A[k],A[i]];[b[i],b[k]]=[b[k],b[i]];const z=A[i][i];for(let c=i;c<8;c++)A[i][c]/=z;b[i]/=z;for(let j=0;j<8;j++)if(j!==i){const v=A[j][i];for(let c=i;c<8;c++)A[j][c]-=v*A[i][c];b[j]-=v*b[i]}}return [...b,1]}
 function pcPerspectiveCanvas(source){const q=pcCorners.map(v=>[v[0]*(source.width-1),v[1]*(source.height-1)]),dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),width=Math.max(300,Math.round((dist(q[0],q[1])+dist(q[3],q[2]))/2)),height=Math.max(300,Math.round((dist(q[0],q[3])+dist(q[1],q[2]))/2)),scale=Math.min(1,1800/Math.max(width,height)),w=Math.round(width*scale),h=Math.round(height*scale),H=pcSolveHomography(q),a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],k=H[7],out=document.createElement('canvas');out.width=w;out.height=h;const ctx=out.getContext('2d',{willReadFrequently:true}),src=document.createElement('canvas');src.width=source.width;src.height=source.height;src.getContext('2d').drawImage(source,0,0);const si=src.getContext('2d',{willReadFrequently:true}).getImageData(0,0,source.width,source.height),od=ctx.createImageData(w,h),S=si.data,O=od.data,sw=source.width,sh=source.height;for(let y=0;y<h;y++){const v=y/(h-1||1);for(let x=0;x<w;x++){const u=x/(w-1||1),den=g*u+k*v+1,sx=(a*u+b*v+c)/den,sy=(d*u+e*v+f)/den,ix=Math.max(0,Math.min(sw-1,Math.round(sx))),iy=Math.max(0,Math.min(sh-1,Math.round(sy))),p=(y*w+x)*4,z=(iy*sw+ix)*4;O[p]=S[z];O[p+1]=S[z+1];O[p+2]=S[z+2];O[p+3]=255}}ctx.putImageData(od,0,0);return out}
+
+function pcDetectDocumentCorners(canvas){
+ const maxSide=360,scale=Math.min(1,maxSide/Math.max(canvas.width,canvas.height)),w=Math.max(2,Math.round(canvas.width*scale)),h=Math.max(2,Math.round(canvas.height*scale));
+ const sample=document.createElement('canvas');sample.width=w;sample.height=h;const sc=sample.getContext('2d',{willReadFrequently:true});sc.drawImage(canvas,0,0,w,h);
+ const rgba=sc.getImageData(0,0,w,h).data,n=w*h,gray=new Uint8Array(n),hist=new Uint32Array(256);
+ for(let i=0,p=0;i<rgba.length;i+=4,p++){const v=Math.round(.299*rgba[i]+.587*rgba[i+1]+.114*rgba[i+2]);gray[p]=v;hist[v]++}
+ let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let bg=0,wb=0,best=-1,threshold=128;
+ for(let t=0;t<256;t++){bg+=hist[t];if(!bg)continue;wb=n-bg;if(!wb)break;const mb=graySum(hist,t)/bg,mf=(sum-graySum(hist,t))/(wb),score=bg*wb*(mb-mf)*(mb-mf);if(score>best){best=score;threshold=t}}
+ function graySum(histogram,t){let z=0;for(let j=0;j<=t;j++)z+=j*histogram[j];return z}
+ let winner=null;
+ for(const invert of [false,true]){
+  const seen=new Uint8Array(n),queue=new Int32Array(n);
+  for(let p=0;p<n;p++){
+   if(seen[p])continue;const on=invert?gray[p]<threshold:gray[p]>=threshold;if(!on){seen[p]=1;continue}
+   let head=0,tail=0;queue[tail++]=p;seen[p]=1;let minX=w,minY=h,maxX=0,maxY=0,count=0;const boundary=[];
+   while(head<tail){const q=queue[head++],x=q%w,y=(q/w)|0;count++;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
+    let edge=false;for(const [nx,ny] of [[x-1,y],[x+1,y],[x,y-1],[x,y+1]]){if(nx<0||ny<0||nx>=w||ny>=h){edge=true;continue}const z=ny*w+nx,valid=invert?gray[z]<threshold:gray[z]>=threshold;if(!valid)edge=true;else if(!seen[z]){seen[z]=1;queue[tail++]=z}}
+    if(edge)boundary.push([x,y]);
+   }
+   const bw=maxX-minX+1,bh=maxY-minY+1,box=bw*bh,ratio=box/n;
+   if(count<n*.12||ratio<.15||ratio>.96||bw< w*.25||bh<h*.2||minX<2||minY<2||maxX>w-3||maxY>h-3)continue;
+   const pts=boundary.length>12000?boundary.filter((_,i)=>i%Math.ceil(boundary.length/12000)===0):boundary;
+   let tl=null,tr=null,br=null,bl=null,lo=Infinity,hi=-Infinity,loD=Infinity,hiD=-Infinity;
+   for(const pt of pts){const x=pt[0],y=pt[1],sumv=x+y,diff=x-y;if(sumv<lo){lo=sumv;tl=pt}if(sumv>hi){hi=sumv;br=pt}if(diff>hiD){hiD=diff;tr=pt}if(diff<loD){loD=diff;bl=pt}}
+   if(!tl||!tr||!br||!bl)continue;
+   const area=Math.abs((tl[0]*tr[1]+tr[0]*br[1]+br[0]*bl[1]+bl[0]*tl[1])-(tl[1]*tr[0]+tr[1]*br[0]+br[1]*bl[0]+bl[1]*tl[0]))/2;
+   const score=area*(count/box);
+   if(!winner||score>winner.score)winner={score,corners:[tl,tr,br,bl].map(pt=>[Math.max(0,Math.min(1,pt[0]/(w-1))),Math.max(0,Math.min(1,pt[1]/(h-1)))])};
+  }
+ }
+ if(!winner)return null;
+ return winner.corners.map(v=>[v[0],v[1]]);
+}
+async function proCameraAutoDetect(){
+ const c=document.getElementById('pc-canvas');if(!c||!c.width)return;
+ proCameraSetStatus('جارٍ تحليل الصورة والبحث عن حدود الورقة…');
+ await new Promise(r=>requestAnimationFrame(r));
+ try{const corners=pcDetectDocumentCorners(c);if(!corners){proCameraSetStatus('لم أتمكن من تحديد الورقة بوضوح. قرّب الورقة أو استخدم تحديد الأركان يدويًا.');return}
+ pcCorners=corners;pcPerspective=true;const overlay=document.getElementById('pc-corners'),btn=document.getElementById('pc-perspective');if(overlay)overlay.style.display='block';if(btn)btn.classList.add('selected');proCameraUpdateCorners();await proCameraRender();proCameraSetStatus('تم اكتشاف حدود الورقة. راجع الأركان قبل الحفظ.');
+ }catch(e){proCameraSetStatus('تعذر اكتشاف الحواف: '+(e.message||'خطأ غير متوقع'))}
+}

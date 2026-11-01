@@ -1,6 +1,6 @@
 let tab='exp',ctx={},ME=null,busy=false,LOADED=false,shownKey='';
-const VIEWS={exp:'viewExpenses',add:'viewAdd',log:'viewLog',manage:'viewManage',cars:'viewCars',carForm:'viewCarForm',carView:'viewCarView'};
-const GROUP={exp:'exp',add:'exp',log:'exp',manage:'exp',cars:'cars',carForm:'cars',carView:'cars'};
+const VIEWS={exp:'viewExpenses',add:'viewAdd',log:'viewLog',manage:'viewManage',report:'viewReport',cars:'viewCars',carForm:'viewCarForm',carView:'viewCarView'};
+const GROUP={exp:'exp',add:'exp',log:'exp',manage:'exp',report:'exp',cars:'cars',carForm:'cars',carView:'cars'};
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

@@ -22,7 +22,7 @@ async function proCameraStart(){
  const cp=CameraPreviewPlugin();if(!cp)throw Error('إضافة الكاميرا غير متاحة');
  await cp.start({position:'rear',width:innerWidth,height:innerHeight,x:0,y:0,toBack:true,storeToFile:false,enableZoom:true,disableAudio:true,lockAndroidOrientation:false});
  try{const f=await cp.getSupportedFlashModes();proCameraModes=f.result||[]}catch{proCameraModes=[]}
- const flash=document.getElementById('pc-flash');if(flash)flash.hidden=!proCameraModes.length;
+ const flash=document.getElementById('pc-flash');if(flash){flash.hidden=false;flash.textContent='LED';flash.title=proCameraModes.length?'تشغيل فلاش LED':'جرّب تشغيل فلاش LED';}
  try{const z=await cp.getMaxZoom();pcMaxZoom=Number(z.maxZoom||z.value||1)||1}catch{pcMaxZoom=1}
  pcZoom=1;proCameraSetStatus('اقترب من المستند مع إظهار الأركان الأربعة');
 }
@@ -66,7 +66,7 @@ async function proCameraRender(){
   ctx.putImageData(frame,0,0);
  }
  const c=document.getElementById('pc-canvas');c.width=iw;c.height=ih;c.getContext('2d',{alpha:false}).drawImage(work,0,0);
- const stage=document.querySelector('.pc-crop-stage');if(stage){stage.style.width='min(100%, '+iw+'px)';stage.style.aspectRatio=iw+'/'+ih}
+ const stage=document.querySelector('.pc-crop-stage');if(stage){stage.style.width='auto';stage.style.aspectRatio='auto'}
  if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);
  const out=await new Promise(res=>c.toBlob(res,'image/jpeg',.97));if(!out)throw Error('فشل تجهيز الصورة');proCameraBlobUrl=URL.createObjectURL(out);
  const e=document.getElementById('pc-enhance'),g=document.getElementById('pc-gray');if(e)e.classList.toggle('selected',pcEnhance);if(g)g.classList.toggle('selected',pcGray);
@@ -79,7 +79,7 @@ async function proCameraToggleGray(){pcGray=!pcGray;if(pcGray)pcEnhance=false;aw
 async function proCameraSetCrop(v){pcCrop=Number(v)||0;await proCameraRender()}
 async function proCameraAccept(){if(!proCameraBlobUrl||!proCameraResolve)return;try{const response=await fetch(proCameraBlobUrl),blob=await response.blob();const done=proCameraResolve;proCameraResolve=null;proCameraCleanup();done(blob)}catch{proCameraSetStatus('تعذر تجهيز الصورة للحفظ')}}
 async function proCameraCancel(){const done=proCameraResolve;proCameraResolve=null;await proCameraStop();proCameraCleanup();if(done)done(null)}
-async function proCameraToggleFlash(){const cp=CameraPreviewPlugin(),next=proCameraFlash==='torch'?'off':(proCameraModes.includes('torch')?'torch':proCameraModes.includes('on')?'on':'off');try{await cp.setFlashMode(next);proCameraFlash=next;document.getElementById('pc-flash')?.classList.toggle('active',next!=='off')}catch{proCameraSetStatus('الفلاش غير متاح على هذا الجهاز')}}
+async function proCameraToggleFlash(){const cp=CameraPreviewPlugin();if(!cp)return;const canTorch=proCameraModes.includes('torch');const next=proCameraFlash!=='off'?'off':(canTorch?'torch':(proCameraModes.includes('on')?'on':'torch'));try{await cp.setFlashMode({flashMode:next});proCameraFlash=next;const b=document.getElementById('pc-flash');if(b){b.classList.toggle('active',next!=='off');b.textContent=next==='off'?'LED':'LED ✓'}proCameraSetStatus(next==='off'?'تم إيقاف فلاش LED':'تم تشغيل فلاش LED')}catch(e){proCameraSetStatus('تعذر تشغيل فلاش LED من الهاتف؛ تحقق من صلاحية الكاميرا والفلاش')}}
 async function proCameraFlip(){try{await CameraPreviewPlugin().flip()}catch{proCameraSetStatus('تعذر تبديل الكاميرا')}}
 
 async function proCameraTogglePerspective(){pcPerspective=!pcPerspective;const e=document.getElementById('pc-corners'),b=document.getElementById('pc-perspective');if(e)e.style.display=pcPerspective?'block':'none';if(b)b.classList.toggle('selected',pcPerspective);proCameraUpdateCorners();proCameraSetStatus(pcPerspective?'اسحب كل دائرة إلى ركن الورقة ثم اضغط استخدام الصورة':'تم إيقاف تصحيح المنظور');await proCameraRender()}

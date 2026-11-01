@@ -161,7 +161,7 @@ function viewCarForm(){
 }
 async function pickDoc(t){
   try{
-    const blob=await pickImage();
+    const blob=await (typeof captureDocumentImage==='function'?captureDocumentImage():pickImage());
     if(!blob)return;
     pend[t]=blob;
     const pv=$('#pv-'+t);pv.src=URL.createObjectURL(blob);pv.style.display='block';

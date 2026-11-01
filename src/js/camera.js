@@ -1,7 +1,8 @@
 // Enhanced in-app document camera. Keeps the existing Supabase upload contract: returns a JPEG Blob.
 const CameraPreviewPlugin=()=>((window.Capacitor||{}).Plugins||{}).CameraPreview||null;
 let proCameraBlobUrl=null,proCameraFlash='off',proCameraModes=[],proCameraResolve=null,proCameraBusy=false;
-let pcOriginal=null,pcRotation=0,pcEnhance=true,pcGray=false,pcCrop=0,pcZoom=1,pcMaxZoom=1;\nlet pcPerspective=false,pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]],pcDrag=-1;
+let pcOriginal=null,pcRotation=0,pcEnhance=true,pcGray=false,pcCrop=0,pcZoom=1,pcMaxZoom=1;
+let pcPerspective=false,pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]],pcDrag=-1;
 function cameraOverlayHtml(){return `<section id="pro-camera" role="dialog" aria-modal="true" aria-label="كاميرا المستندات">
 <header class="pc-top"><button class="pc-icon" onclick="proCameraCancel()" aria-label="إغلاق">✕</button><span>ماسح مستندات السيارة</span><button class="pc-icon" id="pc-flash" onclick="proCameraToggleFlash()" aria-label="الفلاش">⚡</button></header>
 <div class="pc-hint" id="pc-hint">ضع المستند كاملًا داخل الإطار واجعل الهاتف موازيًا له</div>

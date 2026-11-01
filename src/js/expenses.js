@@ -237,3 +237,32 @@ async function importData(){
     toast(`تم استيراد ${rows.length} حركة${skipped?` (تخطّي ${skipped})`:''}`);
   });
 }
+
+
+function viewReport(){
+ const m=F.m||today().slice(0,7);
+ return '<h1>التقارير الشهرية</h1><label>الشهر</label><input id="rm" type="month" value="'+esc(m)+'" onchange="F.m=this.value;renderReport()">'+
+ '<div class="two seg"><button class="ghost '+(!F.w?'on':'')+'" onclick="F.w=\'\';render()">تقرير الحساب</button><button class="ghost '+(F.w?'on':'')+'" onclick="F.w=\'all\';render()">تقرير المحفظة</button></div>'+
+ '<label>'+(F.w?'المحفظة':'الحساب')+'</label><select id="rsel" onchange="F.'+(F.w?'w':'a')+'=this.value;renderReport()">'+(F.w?wOpts(F.w==='all'?'':F.w,'اختار المحفظة'):aOpts(F.a,'اختار الحساب'))+'</select><div id="reportBody">'+reportHtml(m)+'</div>';
+}
+function renderReport(){const m=$('#rm')?$('#rm').value:F.m||today().slice(0,7);F.m=m;const el=$('#reportBody');if(el)el.innerHTML=reportHtml(m)}
+function reportHtml(m){
+ const isW=!!F.w&&F.w!=='all',id=isW?F.w:F.a;if(!id||id==='all')return '<p class="empty">اختار محفظة أو حساب لعرض التقرير.</p>';
+ const start=m+'-01',end=new Date(Number(m.slice(0,4)),Number(m.slice(5,7)),0).toISOString().slice(0,10),month=S.tx.filter(t=>t.d>=start&&t.d<=end);
+ let opening=0,credit=0,debit=0,rows=[];
+ if(isW){const w=wById(id);if(!w)return '<p class="empty">المحفظة غير موجودة.</p>';opening=w.opening+S.tx.filter(t=>t.d<start).reduce((v,t)=>v+txWalletDelta(t,id),0);rows=month.filter(t=>t.w===id||t.to===id);credit=rows.reduce((v,t)=>v+(t.k==='c'&&t.w===id?t.a:t.k==='t'&&t.to===id?t.a:0),0);debit=rows.reduce((v,t)=>v+(t.k==='d'&&t.w===id?t.a:t.k==='t'&&t.w===id?t.a:0),0);}
+ else{rows=month.filter(t=>t.ac===id&&t.k!=='t');opening=S.tx.filter(t=>t.d<start&&t.ac===id&&t.k!=='t').reduce((v,t)=>v+(t.k==='c'?t.a:-t.a),0);credit=rows.reduce((v,t)=>v+(t.k==='c'?t.a:0),0);debit=rows.reduce((v,t)=>v+(t.k==='d'?t.a:0),0);}
+ opening=round2(opening);credit=round2(credit);debit=round2(debit);const closing=round2(opening+credit-debit),name=isW?wName(id):aName(id);
+ let h='<div class="card-item"><b>'+esc(name)+' — '+esc(m)+'</b><div class="kv"><span>رصيد أول المدة</span><b class="num">'+fmt(opening)+' ج.م</b></div><div class="kv"><span>الدائن (داخل)</span><b class="num pos">'+fmt(credit)+' ج.م</b></div><div class="kv"><span>المدين (خارج)</span><b class="num neg">'+fmt(debit)+' ج.م</b></div><div class="kv"><b>رصيد آخر المدة</b><b class="num">'+fmt(closing)+' ج.م</b></div></div>'+
+ '<div class="two"><button class="ghost" onclick="exportReport(\''+m+'\',\''+id+'\','+isW+')">تصدير Excel</button><button class="ghost" onclick="printReport()">طباعة / PDF</button></div><h2>تفاصيل الحركات ('+rows.length+')</h2>';
+ if(!rows.length)return h+'<p class="empty">لا توجد حركات خلال الشهر.</p>';
+ return h+rows.sort((a,b)=>a.d.localeCompare(b.d)).map(t=>{const dir=t.k==='t'?(t.to===id?'دائن تحويل':'مدين تحويل'):t.k==='c'?'دائن':'مدين';const amount=(t.k==='t'?(t.to===id?'+':'−'):t.k==='c'?'+':'−')+fmt(t.a);return '<div class="row"><div>'+dir+' · '+esc(t.n||(t.k==='t'?'تحويل بين المحافظ':''))+'<small>'+esc(t.d)+' · '+esc(t.source||(t.k==='t'?'تحويل داخلي':aName(t.ac)))+'</small></div><b class="num '+(dir.startsWith('دائن')?'pos':'neg')+'">'+amount+'</b></div>'}).join('');
+}
+async function exportReport(m,id,isW){
+ const start=m+'-01',end=new Date(Number(m.slice(0,4)),Number(m.slice(5,7)),0).toISOString().slice(0,10),rows=S.tx.filter(t=>t.d>=start&&t.d<=end&&(isW?(t.w===id||t.to===id):t.ac===id));
+ const data=[['التاريخ','النوع','المحفظة','المحفظة المستقبلة','الحساب','مصدر الأموال','البيان','المبلغ']];
+ rows.forEach(t=>data.push([t.d,t.k==='t'?'تحويل':t.k==='c'?'دائن':'مدين',wName(t.w),t.to?wName(t.to):'',t.ac?aName(t.ac):'',t.source||'',t.n,t.a]));
+ const csv='\uFEFF'+data.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+ await shareFile(new Blob([csv],{type:'text/csv;charset=utf-8'}),'report-'+m+'.csv','تقرير '+m);
+}
+function printReport(){window.print()}

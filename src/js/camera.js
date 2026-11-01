@@ -56,7 +56,7 @@ async function proCameraCapture(){
   try{
     proCameraSetStatus('جارٍ التقاط الصورة بأعلى جودة…');
     const result=await cp.capture({quality:100});
-    const raw=String(result.value||'').replace(/^data:image\\/[^;]+;base64,/,'');
+    const raw=String(result.value||'').replace(/^data:[^,]*;base64,/i,'');
     if(!raw)throw new Error('لم يتم التقاط صورة');
     const blob=b64ToBlob(raw,'image/jpeg');
     await proCameraStop();

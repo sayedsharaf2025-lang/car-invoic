@@ -223,7 +223,7 @@ async function importData(){
     for(const name of accNames)if(!amap[name]){const r=ck(await sb.from('accounts').insert({name}).select().single());amap[name]=r.data.id}
     // transactions, skipping ones that already exist
     const key=(w,a,k,amt,dt,n)=>[w,a,k,round2(amt),dt,n].join('|');
-    const have={};S.tx.forEach(t=>{const k=key(t.w,t.ac,t.k,t.a,t.d,t.n);have[k]=(have[k]||0)+1});
+    const have={};S.tx.forEach(t=>{const k=key(t.w,t.k==='t'?t.to:t.ac,t.k,t.a,t.d,t.n);have[k]=(have[k]||0)+1});
     const rows=[];let skipped=0;
     for(const t of d.transactions){
       const w=wmap[t.wallet],to=t.kind==='t'?wmap[t.to_wallet]:null,a=t.kind==='t'?null:amap[String(t.account||'').trim()],amt=+t.amount,note=String(t.note||'').slice(0,120);

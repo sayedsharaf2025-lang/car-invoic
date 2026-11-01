@@ -128,3 +128,8 @@ body.cam-active nav,body.cam-active #toast,body.cam-active #modal{display:none!i
 .pc-corners circle{fill:#fff;stroke:#079b75;stroke-width:5;vector-effect:non-scaling-stroke;touch-action:none;cursor:grab}
 .pc-corners circle:active{cursor:grabbing}
 #pc-perspective.selected{background:#087f62;border-color:#087f62}
+
+#pc-auto-detect{background:#087f62;border-color:#087f62;font-weight:800}
+#pc-auto-detect:active{filter:brightness(1.15)}
+.pc-crop-stage{max-width:100%;overflow:hidden}
+.pc-edit-tools .pc-edit-row{margin-top:7px}

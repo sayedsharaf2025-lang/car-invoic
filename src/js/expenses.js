@@ -191,7 +191,7 @@ async function exportData(){
     const data={app:'cashbook',version:2,exported_at:new Date().toISOString(),
       wallets:S.wallets.map(w=>({name:w.name,type:w.type,opening_balance:w.opening})),
       accounts:S.accounts.map(a=>a.name),
-      transactions:S.tx.map(t=>({wallet:S.wallets.findIndex(w=>w.id===t.w),account:aName(t.ac),kind:t.k,amount:t.a,date:t.d,note:t.n,adjustment:t.adj}))};
+      transactions:S.tx.map(t=>({wallet:S.wallets.findIndex(w=>w.id===t.w),to_wallet:S.wallets.findIndex(w=>w.id===t.to),account:t.ac?aName(t.ac):'',kind:t.k,amount:t.a,date:t.d,note:t.n,source:t.source||'',adjustment:t.adj}))};
     const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
     await shareFile(blob,`cashbook-backup-${today()}.json`,'نسخة احتياطية - دفتر النقدية');
   });
@@ -226,8 +226,8 @@ async function importData(){
     const have={};S.tx.forEach(t=>{const k=key(t.w,t.ac,t.k,t.a,t.d,t.n);have[k]=(have[k]||0)+1});
     const rows=[];let skipped=0;
     for(const t of d.transactions){
-      const w=wmap[t.wallet],a=amap[String(t.account||'').trim()],amt=+t.amount,note=String(t.note||'').slice(0,120);
-      if(!w||!a||!(amt>0)||!/^[dc]$/.test(t.kind)||!/^\d{4}-\d{2}-\d{2}$/.test(t.date)){skipped++;continue}
+      const w=wmap[t.wallet],to=t.kind==='t'?wmap[t.to_wallet]:null,a=t.kind==='t'?null:amap[String(t.account||'').trim()],amt=+t.amount,note=String(t.note||'').slice(0,120);
+      if(!w||!(amt>0)||!['c','d','t'].includes(t.kind)||(t.kind==='t'?(!to||to===w):!a)||!/^\d{4}-\d{2}-\d{2}$/.test(t.date)){skipped++;continue}
       const k=key(w,a||to,t.kind,amt,t.date,note);
       if(have[k]>0){have[k]--;skipped++;continue}
       rows.push({wallet_id:w,to_wallet_id:to,account_id:a,kind:t.kind,amount:round2(amt),tx_date:t.date,note,source:String(t.source||'').slice(0,120),is_adjustment:!!t.adjustment});

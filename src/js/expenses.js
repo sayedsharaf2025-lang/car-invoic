@@ -119,12 +119,12 @@ function viewLog(){
 function renderLog(){const l=$('#logList');if(l)l.innerHTML=logHtml()}
 function logHtml(){
   const q=F.q.trim().toLowerCase();
-  const list=S.tx.filter(t=>(!F.a||t.ac===F.a)&&(!F.w||t.w===F.w)&&(!F.m||t.d.slice(0,7)===F.m)&&(!q||t.n.toLowerCase().includes(q)));
+  const list=S.tx.filter(t=>(!F.a||t.ac===F.a)&&(!F.w||t.w===F.w||t.to===F.w)&&(!F.m||t.d.slice(0,7)===F.m)&&(!q||t.n.toLowerCase().includes(q)));
   const dr=round2(list.reduce((a,t)=>t.k==='d'?a+t.a:a,0)),cr=round2(list.reduce((a,t)=>t.k==='c'?a+t.a:a,0)),net=round2(cr-dr);
   let h=`<div class="row sum"><div class="sumgrid"><span>مصروفات<b class="num neg">${fmt(dr)}</b></span><span>إيداعات<b class="num pos">${fmt(cr)}</b></span><span>الصافي<b class="num ${sign(net)}">${fmt(net)}</b></span></div></div>`;
   if(!list.length)return h+(S.tx.length?'<p class="empty">مفيش حركات مطابقة.</p>':emptyBox('🧾','لسه مفيش حركات','أول حركة تسجلها هتظهر هنا.','+ حركة جديدة',"go('add')"));
   const MAX=300;
-  h+=list.slice(0,MAX).map(t=>`<div class="row"><div>${esc(aName(t.ac))}${t.n?' — '+esc(t.n):''}<small>${esc(t.d)} · ${esc(wName(t.w))}</small></div><div class="acts"><span class="num ${t.k==='c'?'pos':'neg'}">${t.k==='c'?'+':'−'}${fmt(t.a)}</span><button class="x" onclick="delTx('${t.id}')" aria-label="حذف">✕</button></div></div>`).join('');
+  h+=list.slice(0,MAX).map(t=>`<div class="row"><div>${esc(aName(t.ac))}${t.n?' — '+esc(t.n):''}<small>${esc(t.d)} · ${esc(wName(t.w))}${t.k==='t'?' ← '+esc(wName(t.to)):''}${t.source?' · المصدر: '+esc(t.source):''}</small></div><div class="acts"><span class="num ${t.k==='c'?'pos':'neg'}">${t.k==='t'?'⇄ ':t.k==='c'?'+':'−'}${fmt(t.a)}</span><button class="x" onclick="delTx('${t.id}')" aria-label="حذف">✕</button></div></div>`).join('');
   if(list.length>MAX)h+=`<p class="empty">معروض أحدث ${MAX} حركة من ${list.length} (الإجماليات لكل الحركات المطابقة).</p>`;
   return h;
 }

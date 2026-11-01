@@ -149,7 +149,7 @@ function walletModal(id){
   modal(`<h2>${id?'تعديل محفظة':'محفظة جديدة'}</h2>
   <label>الاسم</label><input id="wn" maxlength="80" value="${esc(w.name)}">
   <label>النوع</label><select id="wt">${opts(Object.entries(TYPES),w.type)}</select>
-  <label>الرصيد الافتتاحي</label><input id="wo" type="text" inputmode="decimal" dir="ltr" value="${w.opening}">
+  <label>الرصيد الافتتاحي</label><input id="wo" type="text" inputmode="decimal" dir="ltr" value="${w.opening}" ${id?"disabled":""}><small class="muted">${id?"الرصيد الافتتاحي ثابت للحفاظ على رصيد المحفظة الحالي.":"رصيد بداية المحفظة فقط."}</small>
   <button class="go" onclick="saveWallet(${id?`'${id}'`:''})">حفظ</button>`);
 }
 async function saveWallet(id){
@@ -157,7 +157,7 @@ async function saveWallet(id){
   if(!name)return toast('اكتب اسم المحفظة');
   if(!isFinite(opening_balance))return toast('الرصيد الافتتاحي مش صحيح');
   await run(async()=>{
-    const row={name,type,opening_balance};
+    const row=id?{name,type}:{name,type,opening_balance};
     ck(id?await sb.from('wallets').update(row).eq('id',id):await sb.from('wallets').insert(row));
     await reloadExp();
   },'تم الحفظ');
@@ -247,7 +247,7 @@ function viewReport(){
 }
 function renderReport(){const m=$('#rm')?$('#rm').value:F.m||today().slice(0,7);F.m=m;const el=$('#reportBody');if(el)el.innerHTML=reportHtml(m)}
 function reportHtml(m){
- const isW=!!F.w&&F.w!=='all',id=isW?F.w:F.a;if(!id||id==='all')return '<p class="empty">اختار محفظة أو حساب لعرض التقرير.</p>';
+ const walletMode=!!F.w,isW=walletMode&&F.w!=='all',id=isW?F.w:F.a;if(walletMode&&F.w==='all')return '<p class="empty">اختار المحفظة لعرض التقرير.</p>';if(!id||id==='all')return '<p class="empty">اختار محفظة أو حساب لعرض التقرير.</p>';
  const start=m+'-01',end=new Date(Number(m.slice(0,4)),Number(m.slice(5,7)),0).toISOString().slice(0,10),month=S.tx.filter(t=>t.d>=start&&t.d<=end);
  let opening=0,credit=0,debit=0,rows=[];
  if(isW){const w=wById(id);if(!w)return '<p class="empty">المحفظة غير موجودة.</p>';opening=w.opening+S.tx.filter(t=>t.d<start).reduce((v,t)=>v+txWalletDelta(t,id),0);rows=month.filter(t=>t.w===id||t.to===id);credit=rows.reduce((v,t)=>v+(t.k==='c'&&t.w===id?t.a:t.k==='t'&&t.to===id?t.a:0),0);debit=rows.reduce((v,t)=>v+(t.k==='d'&&t.w===id?t.a:t.k==='t'&&t.w===id?t.a:0),0);}

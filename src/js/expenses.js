@@ -119,12 +119,12 @@ function viewLog(){
 function renderLog(){const l=$('#logList');if(l)l.innerHTML=logHtml()}
 function logHtml(){
   const q=F.q.trim().toLowerCase();
-  const list=S.tx.filter(t=>(!F.a||t.ac===F.a)&&(!F.w||t.w===F.w||t.to===F.w)&&(!F.m||t.d.slice(0,7)===F.m)&&(!q||t.n.toLowerCase().includes(q)));
-  const dr=round2(list.reduce((a,t)=>t.k==='d'?a+t.a:a,0)),cr=round2(list.reduce((a,t)=>t.k==='c'?a+t.a:a,0)),net=round2(cr-dr);
-  let h=`<div class="row sum"><div class="sumgrid"><span>مصروفات<b class="num neg">${fmt(dr)}</b></span><span>إيداعات<b class="num pos">${fmt(cr)}</b></span><span>الصافي<b class="num ${sign(net)}">${fmt(net)}</b></span></div></div>`;
+  const list=S.tx.filter(t=>(!F.a||t.ac===F.a)&&(!F.w||t.w===F.w||t.to===F.w)&&(!F.m||t.d.slice(0,7)===F.m)&&(!q||[t.n,t.source,aName(t.ac),wName(t.w),wName(t.to)].join(' ').toLowerCase().includes(q)));
+  const dr=round2(list.reduce((a,t)=>t.k==='d'?a+t.a:a,0)),cr=round2(list.reduce((a,t)=>t.k==='c'?a+t.a:a,0)),net=round2(cr-dr),transfers=list.filter(t=>t.k==='t').length;
+  let h=`<div class="row sum"><div class="sumgrid"><span>مدين<b class="num neg">${fmt(dr)}</b></span><span>دائن<b class="num pos">${fmt(cr)}</b></span><span>الصافي<b class="num ${sign(net)}">${fmt(net)}</b></span><span>تحويلات<b class="num">${transfers}</b></span></div></div>`;
   if(!list.length)return h+(S.tx.length?'<p class="empty">مفيش حركات مطابقة.</p>':emptyBox('🧾','لسه مفيش حركات','أول حركة تسجلها هتظهر هنا.','+ حركة جديدة',"go('add')"));
   const MAX=300;
-  h+=list.slice(0,MAX).map(t=>`<div class="row"><div>${esc(aName(t.ac))}${t.n?' — '+esc(t.n):''}<small>${esc(t.d)} · ${esc(wName(t.w))}${t.k==='t'?' ← '+esc(wName(t.to)):''}${t.source?' · المصدر: '+esc(t.source):''}</small></div><div class="acts"><span class="num ${t.k==='c'?'pos':'neg'}">${t.k==='t'?'⇄ ':t.k==='c'?'+':'−'}${fmt(t.a)}</span><button class="x" onclick="delTx('${t.id}')" aria-label="حذف">✕</button></div></div>`).join('');
+  h+=list.slice(0,MAX).map(t=>`<div class="row"><div>${t.k==='t'?'تحويل بين المحافظ':esc(aName(t.ac))}${t.n?' — '+esc(t.n):''}<small>${esc(t.d)} · ${esc(wName(t.w))}${t.k==='t'?' ← '+esc(wName(t.to)):''}${t.source?' · المصدر: '+esc(t.source):''}</small></div><div class="acts"><span class="num ${t.k==='c'||(t.k==='t'&&t.to===F.w)?'pos':t.k==='t'?'':'neg'}">${t.k==='t'?'⇄ ':t.k==='c'?'+':'−'}${fmt(t.a)}</span><button class="ghost" onclick="editTx('${t.id}')">تعديل</button><button class="x" onclick="delTx('${t.id}')" aria-label="حذف">✕</button></div></div>`).join('');
   if(list.length>MAX)h+=`<p class="empty">معروض أحدث ${MAX} حركة من ${list.length} (الإجماليات لكل الحركات المطابقة).</p>`;
   return h;
 }
@@ -267,3 +267,35 @@ async function exportReport(m,id,isW){
  await shareFile(new Blob([csv],{type:'text/csv;charset=utf-8'}),'report-'+m+'.csv','تقرير '+m);
 }
 function printReport(){window.print()}
+
+
+/* ---------- safe transaction editing ---------- */
+function editTx(id){
+  const t=S.tx.find(x=>x.id===id);if(!t)return toast('الحركة غير موجودة');
+  modal('<h2>تعديل الحركة المالية</h2>'+
+    '<label>نوع الحركة</label><select id="etk" onchange="toggleEditKind()">'+opts([['d','صرف'],['c','قبض / إيداع'],['t','تحويل بين المحافظ']],t.k)+'</select>'+
+    '<label>من محفظة</label><select id="etw">'+wOpts(t.w)+'</select>'+
+    '<div id="editToBox" '+(t.k==='t'?'':'hidden')+'><label>إلى محفظة</label><select id="etto">'+wOpts(t.to||'')+'</select></div>'+
+    '<div id="editAccountBox" '+(t.k==='t'?'hidden':'')+'><label>الحساب / البند</label><select id="eta">'+aOpts(t.ac||'')+'</select></div>'+
+    '<label>المبلغ</label><input id="etam" type="text" inputmode="decimal" dir="ltr" value="'+fmt(t.a)+'">'+
+    '<label>التاريخ</label><input id="etd" type="date" value="'+esc(t.d)+'">'+
+    '<label>مصدر الأموال / الجهة</label><input id="ets" maxlength="120" value="'+esc(t.source||'')+'">'+
+    '<label>البيان</label><input id="etn" maxlength="120" value="'+esc(t.n||'')+'">'+
+    '<button class="go" onclick="saveEditTx(\''+id+'\')">حفظ التعديلات</button>');
+}
+function toggleEditKind(){
+ const transfer=$('#etk').value==='t';$('#editToBox').hidden=!transfer;$('#editAccountBox').hidden=transfer;
+}
+async function saveEditTx(id){
+ const k=$('#etk').value,wallet_id=$('#etw').value,to_wallet_id=k==='t'?$('#etto').value:null,account_id=k==='t'?null:$('#eta').value;
+ const amount=Number(num($('#etam').value)),tx_date=$('#etd').value,source=$('#ets').value.trim().slice(0,120),note=$('#etn').value.trim().slice(0,120);
+ if(!['d','c','t'].includes(k))return toast('نوع الحركة غير صحيح');
+ if(!(Number.isFinite(amount)&&amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(tx_date))return toast('اختار تاريخ صحيح');
+ if(k==='t'&&(!to_wallet_id||to_wallet_id===wallet_id))return toast('اختار محفظتين مختلفتين');
+ if(k!=='t'&&!account_id)return toast('اختار الحساب');
+ await run(async()=>{
+   ck(await sb.from('transactions').update({wallet_id,to_wallet_id,account_id,kind:k,amount:round2(amount),tx_date,note,source}).eq('id',id));
+   await loadExpenses();renderLog();
+ },'تم تعديل الحركة');
+}

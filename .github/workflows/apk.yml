@@ -1,4 +1,5 @@
 name: Build APK
+# Rebuild after finance date-validation fix
 on: [workflow_dispatch, push]
 jobs:
   apk:

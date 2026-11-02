@@ -96,9 +96,12 @@ async function dictate(){
   finally{b.classList.remove('rec')}
 }
 async function saveTx(){
-  const wallet_id=$('#fw').value,to_wallet_id=transferMode?$('#tw').value:null,account_id=transferMode?null:$('#fa').value,amount=parseFloat(num($('#am').value)),tx_date=$('#dt').value||today(),note=$('#nt').value.trim().slice(0,120),source=$('#src').value.trim().slice(0,120);
-  if(!(amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');
+  const wallet_id=$('#fw').value,to_wallet_id=transferMode?$('#tw').value:null,account_id=transferMode?null:$('#fa').value,amount=Number(num($('#am').value)),tx_date=$('#dt').value||today(),note=$('#nt').value.trim().slice(0,120),source=$('#src').value.trim().slice(0,120);
+  if(!wallet_id)return toast('اختار المحفظة');
+  if(!(Number.isFinite(amount)&&amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');
+  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(tx_date))return toast('اختار تاريخ صحيح');
   if(transferMode&&(!to_wallet_id||to_wallet_id===wallet_id))return toast('اختار محفظتين مختلفتين');
+  if(!transferMode&&!account_id)return toast('اختار الحساب');
   await run(async()=>{
     ck(await sb.from('transactions').insert({wallet_id,to_wallet_id,account_id,kind:transferMode?'t':kind,amount:round2(amount),tx_date,note,source}));
     lastW=wallet_id;await loadExpenses();go('exp',null,true);

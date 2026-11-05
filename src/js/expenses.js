@@ -266,7 +266,7 @@ function viewReport(){
 
 function viewSourceReport(){
  const from=F.from||today().slice(0,7)+'-01',to=F.to||today();
- const rows=S.tx.filter(t=>t.k==='c'&&t.sourceId&&t.debtAction!=='repayment'&&t.d>=from&&t.d<=to&&(!F.source||t.sourceId===F.source));
+ const rows=S.tx.filter(t=>t.k==='c'&&(t.sourceId||t.source)&&t.debtAction!=='repayment'&&t.d>=from&&t.d<=to&&(!F.source||t.sourceId===F.source));
  const total=round2(rows.reduce((n,t)=>n+t.a,0));
  const grouped={};rows.forEach(t=>{const s=S.sources.find(x=>x.id===t.sourceId);const name=s?s.name:(t.source||'مصدر غير محدد');grouped[name]=(grouped[name]||0)+t.a});
  return `<h1>تقرير مصادر الأموال</h1><div class="two"><button class="ghost" onclick="F.reportType='';render()">التقارير الشهرية</button><button class="ghost" onclick="F.reportType='debts';render()">المديونيات</button></div>

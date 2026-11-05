@@ -177,7 +177,7 @@ async function compressCarDocument(blob){
   const compress=window.imageCompression;
   if(typeof compress!=='function')throw new Error('مكتبة ضغط الصور غير متاحة؛ لم يتم رفع الصورة');
   const input=new File([blob],'car-document.jpg',{type:blob.type||'image/jpeg',lastModified:Date.now()});
-  return await compress(input,{maxWidthOrHeight:1920,maxSizeMB:0.5,useWebWorker:false,fileType:'image/jpeg',initialQuality:0.92});
+  return await compress(input,{maxWidthOrHeight:2560,maxSizeMB:1.5,useWebWorker:false,fileType:'image/jpeg',initialQuality:0.94});
 }
 async function saveCar(){
   const row={};

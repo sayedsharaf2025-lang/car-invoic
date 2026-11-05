@@ -240,16 +240,23 @@ async function importData(){
     const amap={};S.accounts.forEach(a=>amap[a.name]=a.id);
     const accNames=new Set(d.accounts.concat(d.transactions.map(t=>t.account)).map(x=>String(x||'').trim().slice(0,80)).filter(Boolean));
     for(const name of accNames)if(!amap[name]){const r=ck(await sb.from('accounts').insert({name}).select().single());amap[name]=r.data.id}
+    // Match/create money sources so imported deposits keep their source attribution.
+    const sourceMap={};S.sources.forEach(s=>sourceMap[s.name]=s.id);
+    for(const s of (d.sources||[])){
+      const name=String(s.name||'').trim().slice(0,100);if(!name)continue;
+      if(!sourceMap[name]){const r=ck(await sb.from('money_sources').insert({name,source_type:['salary','colleague','mobile_invoice','custody','customer','supplier','other'].includes(s.type)?s.type:'other',is_active:s.active!==false}).select().single());sourceMap[name]=r.data.id}
+    }
     // transactions, skipping ones that already exist
     const key=(w,a,k,amt,dt,n)=>[w,a,k,round2(amt),dt,n].join('|');
     const have={};S.tx.forEach(t=>{const k=key(t.w,t.k==='t'?t.to:t.ac,t.k,t.a,t.d,t.n);have[k]=(have[k]||0)+1});
     const rows=[];let skipped=0;
     for(const t of d.transactions){
-      const w=wmap[t.wallet],to=t.kind==='t'?wmap[t.to_wallet]:null,a=t.kind==='t'?null:amap[String(t.account||'').trim()],amt=+t.amount,note=String(t.note||'').slice(0,120);
-      if(!w||!(amt>0)||!['c','d','t'].includes(t.kind)||(t.kind==='t'?(!to||to===w):!a)||!/^\d{4}-\d{2}-\d{2}$/.test(t.date)){skipped++;continue}
+      const w=wmap[t.wallet],to=t.kind==='t'?wmap[t.to_wallet]:null,a=t.kind==='t'?null:(amap[String(t.account||'').trim()]||null),amt=+t.amount,note=String(t.note||'').slice(0,120);
+      if(!w||!(amt>0)||!['c','d','t'].includes(t.kind)||(t.kind==='t'?(!to||to===w):(t.kind==='d'&&!a))||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(t.date)){skipped++;continue}
       const k=key(w,a||to,t.kind,amt,t.date,note);
       if(have[k]>0){have[k]--;skipped++;continue}
-      rows.push({wallet_id:w,to_wallet_id:to,account_id:a,kind:t.kind,amount:round2(amt),tx_date:t.date,note,source:String(t.source||'').slice(0,120),is_adjustment:!!t.adjustment});
+      const sourceName=String(t.source_name||t.source||'').trim(),source_id=sourceMap[sourceName]||null;
+      rows.push({wallet_id:w,to_wallet_id:to,account_id:a,kind:t.kind,amount:round2(amt),tx_date:t.date,note,source:String(t.source||sourceName).slice(0,120),source_id,is_adjustment:!!t.adjustment});
     }
     for(let i=0;i<rows.length;i+=200)ck(await sb.from('transactions').insert(rows.slice(i,i+200)));
     await reloadExp();
@@ -320,7 +327,7 @@ function editTx(id){
     '<label>نوع الحركة</label><select id="etk" onchange="toggleEditKind()">'+opts([['d','صرف'],['c','قبض / إيداع'],['t','تحويل بين المحافظ']],t.k)+'</select>'+
     '<label>من محفظة</label><select id="etw">'+wOpts(t.w)+'</select>'+
     '<div id="editToBox" '+(t.k==='t'?'':'hidden')+'><label>إلى محفظة</label><select id="etto">'+wOpts(t.to||'')+'</select></div>'+
-    '<div id="editAccountBox" '+(t.k==='t'?'hidden':'')+'><label>الحساب / البند (اختياري للقبض)</label><select id="eta">'+aOpts(t.ac||'','بدون حساب')}</select></div>'+
+    '<div id="editAccountBox" '+(t.k==='t'?'hidden':'')+'><label>الحساب / البند (اختياري للقبض)</label><select id="eta">'+aOpts(t.ac||'','بدون حساب')+'</select></div>'+
     '<label>المبلغ</label><input id="etam" type="text" inputmode="decimal" dir="ltr" value="'+fmt(t.a)+'">'+
     '<label>التاريخ</label><input id="etd" type="date" value="'+esc(t.d)+'">'+
     '<label>مصدر الأموال (للقبض)</label><select id="etSourceId">'+sourceOpts(matchedSource,'بدون مصدر مرتبط')+'</select>'+

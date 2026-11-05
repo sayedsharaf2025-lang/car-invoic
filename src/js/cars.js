@@ -1,12 +1,12 @@
 const BUCKET='car-docs';
-const DOCS=[['car_license','رخصة السيارة'],['driver_license','رخصة القيادة'],['entity_license','رخصة الشركة / الجهة']];
+const DOCS=[['car_license','رخصة السيارة'],['driver_license','رخصة السائق'],['entity_license','شهادة المؤسسة'],['repair_letter','جواب إصلاح'],['inspection','الفحص'],['notes_attachment','مرفقات الملاحظات']];
 const DOC_LABEL=Object.fromEntries(DOCS);
 // The 15 columns, in the exact order of the import file. Single source for form, details, PDF and import.
 const FIELDS=[
   ['plate','رقم لوحة السيارة'],['brand','الماركة'],['model_year','الموديل'],['vehicle_type','نوع السيارة'],
   ['chassis_no','رقم الشاسيه'],['engine_no','رقم الموتور'],['traffic_dept','إدارة / جهة المرور'],['owner_company','الشركة المالكة'],
   ['license_expiry','تاريخ نهاية الترخيص','date'],['license_status','حالة الترخيص الجارية'],['license_supervisor','مشرف التراخيص'],
-  ['driver','السائق المكلف'],['fire_extinguisher','حالة طفاية الحريق'],['insurance_status','موقف بيانات التأمين'],['notes','ملاحظات إضافية','area']
+  ['driver','السائق المكلف'],['fire_extinguisher','حالة طفاية الحريق'],['insurance_status','موقف بيانات التأمين'],['notes','ملاحظات','area']
 ];
 const MAXLEN={plate:30,model_year:20,notes:1000};
 const SOON_DAYS=30,PAGE=100;
@@ -161,7 +161,7 @@ function viewCarForm(){
 }
 async function pickDoc(t){
   try{
-    const blob=await pickImage();
+    const blob=await (typeof captureDocumentImage==='function'?captureDocumentImage():pickImage());
     if(!blob)return;
     pend[t]=blob;
     const pv=$('#pv-'+t);pv.src=URL.createObjectURL(blob);pv.style.display='block';
@@ -171,6 +171,13 @@ function clearDoc(t){
   const had=ctx.id&&(CDOCS[ctx.id]||{})[t];
   if(had)pend[t]='remove';else delete pend[t];
   const pv=$('#pv-'+t);pv.removeAttribute('src');pv.style.display='none';
+}
+async function compressCarDocument(blob){
+  if(!(blob instanceof Blob))throw new Error('ملف الصورة غير صالح');
+  const compress=window.imageCompression;
+  if(typeof compress!=='function')throw new Error('مكتبة ضغط الصور غير متاحة؛ لم يتم رفع الصورة');
+  const input=new File([blob],'car-document.jpg',{type:blob.type||'image/jpeg',lastModified:Date.now()});
+  return await compress(input,{maxWidthOrHeight:1920,maxSizeMB:0.5,useWebWorker:false,fileType:'image/jpeg',initialQuality:0.9});
 }
 async function saveCar(){
   const row={};
@@ -185,8 +192,9 @@ async function saveCar(){
       const p=pend[t];
       if(!p)continue;
       if(p==='remove'){if(old[t])await delDocRow(old[t]);delete pend[t];continue}
-      const path=`${ME.id}/${id}/${t}-${Date.now()}.jpg`;
-      ck(await sb.storage.from(BUCKET).upload(path,p,{contentType:'image/jpeg'}));
+      const compressed=await compressCarDocument(p);
+      const path=`${WORKSPACE_ID}/${id}/${t}-${Date.now()}.jpg`;
+      ck(await sb.storage.from(BUCKET).upload(path,compressed,{contentType:'image/jpeg'}));
       ck(await sb.from('car_documents').upsert({car_id:id,doc_type:t,path},{onConflict:'car_id,doc_type'}));
       if(old[t])await sb.storage.from(BUCKET).remove([old[t].path]);
       delete pend[t];
@@ -279,7 +287,7 @@ async function pickImportFile(){
     const CH=200;
     for(let i=0;i<res.rows.length;i+=CH){
       toast(`جاري الاستيراد… ${Math.min(i+CH,res.rows.length)}/${res.rows.length}`);
-      const chunk=res.rows.slice(i,i+CH).map(r=>({...r,user_id:ME.id}));
+      const chunk=res.rows.slice(i,i+CH).map(r=>({...r,user_id:WORKSPACE_ID}));
       ck(await sb.from('cars').upsert(chunk,{onConflict:'user_id,plate'}));
     }
     await loadCars();carQ='';carFilter='';carLimit=PAGE;

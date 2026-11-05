@@ -47,7 +47,7 @@ async function loadProfile(){
   if(isAdmin())SCREEN_KEYS=SCREEN_LIST.map(x=>x[0]);
  }
 }
-async function loadAll(){await loadProfile();if(PROFILE.status==='approved'){await Promise.all([loadExpenses(),loadCars()]);if(isAdmin()){const {data,error}=await sb.from('app_users').select('*').order('created_at',{ascending:false});if(error)throw error;USER_ROWS=data||[]}LOADED=true}render()}
+async function loadAll(){await loadProfile();if(PROFILE.status==='approved'){const finance=SCREEN_KEYS.some(k=>['exp','add','log','manage','report'].includes(k));const jobs=[];if(finance)jobs.push(loadExpenses());else S={wallets:[],accounts:[],tx:[]};if(hasScreen('cars'))jobs.push(loadCars());else{CARS=[];CDOCS={};URLS={}}if(isAdmin()){const {data,error}=await sb.from('app_users').select('*').order('created_at',{ascending:false});if(error)throw error;USER_ROWS=data||[]}await Promise.all(jobs);LOADED=true}render()}
 function start(){LOADED=false;PROFILE=null;WORKSPACE_ID=null;SCREEN_KEYS=[];render();run(loadAll)}
 function resetState(){LOADED=false;PROFILE=null;WORKSPACE_ID=null;SCREEN_KEYS=[];USER_ROWS=[];S={wallets:[],accounts:[],tx:[]};CARS=[];CDOCS={};URLS={}}
 function viewSettings(){

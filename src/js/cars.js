@@ -193,7 +193,7 @@ async function saveCar(){
       if(!p)continue;
       if(p==='remove'){if(old[t])await delDocRow(old[t]);delete pend[t];continue}
       const compressed=await compressCarDocument(p);
-      const path=`${ME.id}/${id}/${t}-${Date.now()}.jpg`;
+      const path=`${WORKSPACE_ID}/${id}/${t}-${Date.now()}.jpg`;
       ck(await sb.storage.from(BUCKET).upload(path,compressed,{contentType:'image/jpeg'}));
       ck(await sb.from('car_documents').upsert({car_id:id,doc_type:t,path},{onConflict:'car_id,doc_type'}));
       if(old[t])await sb.storage.from(BUCKET).remove([old[t].path]);
@@ -287,7 +287,7 @@ async function pickImportFile(){
     const CH=200;
     for(let i=0;i<res.rows.length;i+=CH){
       toast(`جاري الاستيراد… ${Math.min(i+CH,res.rows.length)}/${res.rows.length}`);
-      const chunk=res.rows.slice(i,i+CH).map(r=>({...r,user_id:ME.id}));
+      const chunk=res.rows.slice(i,i+CH).map(r=>({...r,user_id:WORKSPACE_ID}));
       ck(await sb.from('cars').upsert(chunk,{onConflict:'user_id,plate'}));
     }
     await loadCars();carQ='';carFilter='';carLimit=PAGE;

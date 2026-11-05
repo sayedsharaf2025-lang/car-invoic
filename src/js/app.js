@@ -49,7 +49,7 @@ async function loadProfile(){
 }
 async function loadAll(){await loadProfile();if(PROFILE.status==='approved'){const finance=SCREEN_KEYS.some(k=>['exp','add','log','manage','report'].includes(k));const jobs=[];if(finance)jobs.push(loadExpenses());else S={wallets:[],accounts:[],tx:[],sources:[],debts:[]};if(hasScreen('cars'))jobs.push(loadCars());else{CARS=[];CDOCS={};URLS={}}if(isAdmin()){const {data,error}=await sb.from('app_users').select('*').order('created_at',{ascending:false});if(error)throw error;USER_ROWS=data||[]}await Promise.all(jobs);LOADED=true}render()}
 function start(){LOADED=false;PROFILE=null;WORKSPACE_ID=null;SCREEN_KEYS=[];render();run(loadAll)}
-function resetState(){LOADED=false;PROFILE=null;WORKSPACE_ID=null;SCREEN_KEYS=[];USER_ROWS=[];S={wallets:[],accounts:[],tx:[]};CARS=[];CDOCS={};URLS={}}
+function resetState(){LOADED=false;PROFILE=null;WORKSPACE_ID=null;SCREEN_KEYS=[];USER_ROWS=[];S={wallets:[],accounts:[],tx:[],sources:[],debts:[]};CARS=[];CDOCS={};URLS={}}
 function viewSettings(){
  if(!isAdmin())return '<p class="empty">الإعدادات متاحة للمدير فقط.</p>';
  const pending=USER_ROWS.filter(u=>u.status==='pending');
@@ -60,7 +60,7 @@ function viewSettings(){
  <button class="ghost wide" onclick="loadAdminUsers()">تحديث القائمة</button>`;
 }
 async function loadAdminUsers(){if(!isAdmin())return;await run(async()=>{const {data,error}=await sb.from('app_users').select('*').order('created_at',{ascending:false});if(error)throw error;USER_ROWS=data||[];render()},'تم تحديث المستخدمين')}
-async function adminSetStatus(id,status){if(!isAdmin()||id===ME.id)return toast('لا يمكن تعديل حساب المدير الرئيسي');const msg=status==='approved'?'الموافقة على المستخدم؟':'تأكيد تغيير حالة المستخدم؟';if(!confirm(msg))return;await run(async()=>{const patch={status,approved_at:status==='approved'?new Date().toISOString():null};const {error}=await sb.from('app_users').update(patch).eq('user_id',id);if(error)throw error;await loadAdminUsers()},'تم تحديث حالة المستخدم')}
+async function adminSetStatus(id,status){if(!isAdmin()||id===ME.id)return toast('لا يمكن تعديل حساب المدير الرئيسي');const msg=status==='approved'?'الموافقة على المستخدم؟':'تأكيد تغيير حالة المستخدم؟';if(!confirm(msg))return;await run(async()=>{const patch={status,approved_at:status==='approved'?new Date().toISOString():null};const {error}=await sb.from('app_users').update(patch).eq('user_id',id);if(error)throw error;const {data,error:readError}=await sb.from('app_users').select('*').order('created_at',{ascending:false});if(readError)throw readError;USER_ROWS=data||[];render()},'تم تحديث حالة المستخدم')}
 async function editUserPermissions(id){
  if(!isAdmin())return;SELECTED_USER=id;
  await run(async()=>{const {data,error}=await sb.from('user_screen_permissions').select('screen_key').eq('user_id',id);if(error)throw error;const chosen=new Set((data||[]).map(x=>x.screen_key));const u=USER_ROWS.find(x=>x.user_id===id);modal(`<h2>صلاحيات الشاشات</h2><p class="muted">${esc(u?.email||'')}</p>${SCREEN_LIST.map(([k,l])=>`<label class="permission-row"><input type="checkbox" data-screen="${k}" ${chosen.has(k)?'checked':''}> ${l}</label>`).join('')}<button class="go" onclick="saveUserPermissions()">حفظ الصلاحيات</button>`)});

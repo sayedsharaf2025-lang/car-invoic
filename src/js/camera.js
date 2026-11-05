@@ -28,7 +28,7 @@ async function proCameraStart(){
  pcZoom=1;proCameraSetStatus('وجّه الكاميرا لتظهر الورقة كاملة؛ المحاذاة ستتم تلقائيًا بعد التصوير');
 }
 async function proCameraStop(){const cp=CameraPreviewPlugin();if(cp)try{await cp.stop()}catch{}}
-function proCameraCleanup(){document.body.classList.remove('cam-active');document.getElementById('pro-camera')?.remove();if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}proCameraFlash='off';proCameraModes=[]}
+function proCameraCleanup(){document.body.classList.remove('cam-active');document.getElementById('pro-camera')?.remove();if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;pcEditingCorners=false;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}proCameraFlash='off';proCameraModes=[]}
 function captureDocumentImage(){
  const cp=CameraPreviewPlugin();if(!isNative()||!cp)return pickImage();
  if(proCameraResolve)return Promise.reject(Error('الكاميرا مفتوحة بالفعل'));
@@ -87,7 +87,7 @@ async function proCameraTogglePerspective(){
  pcPerspective=!pcPerspective;if(e)e.style.display='none';if(b){b.textContent='تصحيح المنظور';b.classList.toggle('selected',pcPerspective)}await proCameraRender();
  proCameraSetStatus(pcPerspective?'تم تفعيل تصحيح المنظور':'تم إيقاف تصحيح المنظور');
 }
-function proCameraResetCorners(){pcCorners=[[0,0],[1,0],[1,1],[0,1]];proCameraUpdateCorners()}
+function proCameraResetCorners(){pcCorners=[[0,0],[1,0],[1,1],[0,1]];pcPerspective=true;pcEditingCorners=true;const e=document.getElementById('pc-corners'),b=document.getElementById('pc-perspective');if(e)e.style.display='block';if(b){b.textContent='تطبيق تصحيح المنظور';b.classList.add('selected')}proCameraUpdateCorners();proCameraRender()}
 function proCameraUpdateCorners(){const p=document.getElementById('pc-poly');if(!p)return;p.setAttribute('points',pcCorners.map(v=>String(v[0]*1000)+','+String(v[1]*1000)).join(' '));document.querySelectorAll('#pc-corners circle').forEach((c,i)=>{c.setAttribute('cx',pcCorners[i][0]*1000);c.setAttribute('cy',pcCorners[i][1]*1000)})}
 (function(){document.addEventListener('pointerdown',e=>{const n=e.target.closest?.('#pc-corners circle');if(!n||!pcPerspective)return;pcDrag=Number(n.dataset.corner);e.preventDefault()});document.addEventListener('pointermove',e=>{if(pcDrag<0||!pcPerspective)return;const svg=document.getElementById('pc-corners'),r=svg.getBoundingClientRect();const next=pcCorners.map(p=>p.slice());next[pcDrag]=[Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))];if(pcValidCorners(next)){pcCorners=next;proCameraUpdateCorners()}});document.addEventListener('pointerup',()=>{pcDrag=-1})})();
 function pcValidCorners(points){

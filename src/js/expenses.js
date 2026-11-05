@@ -11,7 +11,9 @@ const bal=w=>round2(S.tx.reduce((a,t)=>a+txWalletDelta(t,w.id),w.opening));
 const sign=n=>n<0?'neg':'pos';
 const opts=(arr,sel,all)=>(all?`<option value="">${all}</option>`:'')+arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
 const wOpts=(sel,all)=>opts(S.wallets.map(w=>[w.id,`${w.name} (${typeName(w.type)})`]),sel,all);
-const aOpts=(sel,all)=>opts(S.accounts.map(a=>[a.id,a.name]),sel,all);\nconst sourceOpts=(sel,all)=>opts(S.sources.filter(s=>s.active).map(s=>[s.id,s.name]),sel,all);\nconst debtOpts=(sel,all)=>opts(S.debts.map(d=>[d.id,`${d.person} — متبقي ${fmt(d.remaining)} ج.م`]),sel,all);
+const aOpts=(sel,all)=>opts(S.accounts.map(a=>[a.id,a.name]),sel,all);
+const sourceOpts=(sel,all)=>opts(S.sources.filter(s=>s.active).map(s=>[s.id,s.name]),sel,all);
+const debtOpts=(sel,all)=>opts(S.debts.map(d=>[d.id,`${d.person} — متبقي ${fmt(d.remaining)} ج.م`]),sel,all);
 
 async function loadExpenses(){
   const [w,a,t,src,debts]=await Promise.all([
@@ -23,7 +25,9 @@ async function loadExpenses(){
   ]);
   S.wallets=w.map(x=>({id:x.id,name:x.name,type:x.type,opening:+x.opening_balance}));
   S.accounts=a.map(x=>({id:x.id,name:x.name}));
-  S.tx=t.map(x=>({id:x.id,k:x.kind,w:x.wallet_id,to:x.to_wallet_id||null,ac:x.account_id,a:+x.amount,d:x.tx_date,n:x.note||'',source:x.source||'',sourceId:x.source_id||null,debtId:x.debt_id||null,debtAction:x.debt_action||'none',adj:!!x.is_adjustment}));\n  S.sources=src.map(x=>({id:x.id,name:x.name,type:x.source_type,active:x.is_active}));\n  S.debts=debts.map(d=>{const repaid=t.filter(x=>x.debt_id===d.id&&x.debt_action==='repayment').reduce((n,x)=>n+Number(x.amount),0);return {id:d.id,person:d.person_name,initial:+d.initial_amount,remaining:round2(Math.max(0,+d.initial_amount-repaid)),date:d.debt_date,note:d.note}});
+  S.tx=t.map(x=>({id:x.id,k:x.kind,w:x.wallet_id,to:x.to_wallet_id||null,ac:x.account_id,a:+x.amount,d:x.tx_date,n:x.note||'',source:x.source||'',sourceId:x.source_id||null,debtId:x.debt_id||null,debtAction:x.debt_action||'none',adj:!!x.is_adjustment}));
+  S.sources=src.map(x=>({id:x.id,name:x.name,type:x.source_type,active:x.is_active}));
+  S.debts=debts.map(d=>{const repaid=t.filter(x=>x.debt_id===d.id&&x.debt_action==='repayment').reduce((n,x)=>n+Number(x.amount),0);return {id:d.id,person:d.person_name,initial:+d.initial_amount,remaining:round2(Math.max(0,+d.initial_amount-repaid)),date:d.debt_date,note:d.note}});
 }
 async function reloadExp(){await loadExpenses();render()}
 
@@ -103,7 +107,7 @@ async function dictate(){
 }
 async function saveTx(){
  const wallet_id=$('#fw').value,amount=Number(num($('#am').value)),tx_date=$('#dt').value||today(),note=$('#nt').value.trim().slice(0,120);
- if(!wallet_id)return toast('اختار المحفظة');if(!(Number.isFinite(amount)&&amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(tx_date))return toast('اختار تاريخ صحيح');
+ if(!wallet_id)return toast('اختار المحفظة');if(!(Number.isFinite(amount)&&amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');if(!/^\d{4}-\d{2}-\d{2}$/.test(tx_date))return toast('اختار تاريخ صحيح');
  await run(async()=>{
   if(transferMode){const to_wallet_id=$('#tw').value;if(!to_wallet_id||to_wallet_id===wallet_id)throw new Error('اختار محفظتين مختلفتين');ck(await sb.from('transactions').insert({wallet_id,to_wallet_id,account_id:null,kind:'t',amount:round2(amount),tx_date,note,source:'تحويل داخلي'}))}
   else if(kind==='c'){

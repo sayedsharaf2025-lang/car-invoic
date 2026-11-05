@@ -50,25 +50,28 @@ function viewExpenses(){
 
 /* ---------- balance reconciliation ---------- */
 function adjustModal(id){
-  const w=wById(id),b=bal(w);
-  modal(`<h2>تسوية رصيد: ${esc(w.name)}</h2>
-  <p class="muted">الرصيد في التطبيق: <b class="num ${sign(b)}">${fmt(b)} ج.م</b></p>
-  <label>الرصيد الفعلي دلوقتي</label><input id="ar" type="text" inputmode="decimal" dir="ltr">
-  <p class="muted">التطبيق هيسجّل الفرق تلقائيًا كحركة "تسوية".</p>
-  <button class="go" onclick="doAdjust('${id}')">تسوية</button>`);
-  setTimeout(()=>$('#ar')&&$('#ar').focus(),50);
+ const w=wById(id),b=bal(w);
+ modal(`<h2>تسوية رصيد: ${esc(w.name)}</h2><p class="muted">الرصيد في التطبيق: <b class="num ${sign(b)}">${fmt(b)} ج.م</b></p>
+ <label>الرصيد الفعلي دلوقتي</label><input id="ar" type="text" inputmode="decimal" dir="ltr">
+ <label>مصدر الزيادة (لو الرصيد زاد)</label><select id="arSource">${sourceOpts('','اختار مصدر الزيادة')}</select>
+ <label>سبب النقص أو ملاحظة التسوية</label><input id="arNote" maxlength="120" placeholder="سبب الخصم أو تفاصيل التسوية">
+ <p class="muted">لو الرصيد زاد لازم تحدد مصدر الفلوس، ولو قل لازم تكتب سبب الخصم.</p>
+ <button class="go" onclick="doAdjust('${id}')">تسوية</button>`);
+ setTimeout(()=>$('#ar')&&$('#ar').focus(),50);
 }
 async function doAdjust(id){
-  const w=wById(id),real=parseFloat(num($('#ar').value));
-  if(!isFinite(real))return toast('اكتب الرصيد الفعلي');
-  const diff=round2(real-bal(w));
-  if(diff===0){closeModal();return toast('مفيش فرق، الرصيد مظبوط')}
-  await run(async()=>{
-    let acc=S.accounts.find(a=>a.name===ADJ_ACCOUNT);
-    if(!acc){const r=ck(await sb.from('accounts').insert({name:ADJ_ACCOUNT}).select().single());acc={id:r.data.id,name:ADJ_ACCOUNT}}
-    ck(await sb.from('transactions').insert({wallet_id:id,account_id:acc.id,kind:diff>0?'c':'d',amount:Math.abs(diff),tx_date:today(),note:'تسوية رصيد',is_adjustment:true}));
-    await reloadExp();
-  },`تم تسجيل فرق ${fmt(Math.abs(diff))} ج.م`);
+ const w=wById(id),real=parseFloat(num($('#ar').value)),source_id=$('#arSource').value,note=$('#arNote').value.trim().slice(0,120);
+ if(!isFinite(real))return toast('اكتب الرصيد الفعلي');
+ const diff=round2(real-bal(w));if(diff===0){closeModal();return toast('مفيش فرق، الرصيد مظبوط')}
+ if(diff>0&&!source_id)return toast('حدد مصدر الزيادة');
+ if(diff<0&&!note)return toast('اكتب سبب النقص');
+ await run(async()=>{
+  let acc=S.accounts.find(a=>a.name===ADJ_ACCOUNT);
+  if(!acc){const r=ck(await sb.from('accounts').insert({name:ADJ_ACCOUNT}).select().single());acc={id:r.data.id,name:ADJ_ACCOUNT}}
+  const source=S.sources.find(s=>s.id===source_id);
+  ck(await sb.from('transactions').insert({wallet_id:id,account_id:acc.id,kind:diff>0?'c':'d',amount:Math.abs(diff),tx_date:today(),note:note||'زيادة رصيد من '+(source?.name||''),source:diff>0?(source?.name||''):'',source_id:diff>0?source_id:null,is_adjustment:true}));
+  await reloadExp();
+ },`تم تسجيل فرق ${fmt(Math.abs(diff))} ج.م`);
 }
 
 /* ---------- add transaction ---------- */

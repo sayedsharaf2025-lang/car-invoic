@@ -172,6 +172,13 @@ function clearDoc(t){
   if(had)pend[t]='remove';else delete pend[t];
   const pv=$('#pv-'+t);pv.removeAttribute('src');pv.style.display='none';
 }
+async function compressCarDocument(blob){
+  if(!(blob instanceof Blob))throw new Error('ملف الصورة غير صالح');
+  const compress=window.imageCompression;
+  if(typeof compress!=='function')throw new Error('مكتبة ضغط الصور غير متاحة؛ لم يتم رفع الصورة');
+  const input=new File([blob],'car-document.jpg',{type:blob.type||'image/jpeg',lastModified:Date.now()});
+  return await compress(input,{maxWidthOrHeight:1920,maxSizeMB:0.5,useWebWorker:false,fileType:'image/jpeg',initialQuality:0.92});
+}
 async function saveCar(){
   const row={};
   FIELDS.forEach(([k,,t])=>{const v=$('#f-'+k).value.trim();row[k]=t==='date'?(v||null):v});
@@ -185,8 +192,9 @@ async function saveCar(){
       const p=pend[t];
       if(!p)continue;
       if(p==='remove'){if(old[t])await delDocRow(old[t]);delete pend[t];continue}
+      const compressed=await compressCarDocument(p);
       const path=`${ME.id}/${id}/${t}-${Date.now()}.jpg`;
-      ck(await sb.storage.from(BUCKET).upload(path,p,{contentType:'image/jpeg'}));
+      ck(await sb.storage.from(BUCKET).upload(path,compressed,{contentType:'image/jpeg'}));
       ck(await sb.from('car_documents').upsert({car_id:id,doc_type:t,path},{onConflict:'car_id,doc_type'}));
       if(old[t])await sb.storage.from(BUCKET).remove([old[t].path]);
       delete pend[t];

@@ -63,6 +63,7 @@ async function proCameraStartLiveDetection(){
   pcLiveBusy=true;
   try{
    const r=await cp.captureSample({quality:38});
+   if(!pcLiveRunning)return;
    const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');
    if(raw){
     const im=await proCameraLoadImage(b64ToBlob(raw,'image/jpeg'));
@@ -82,7 +83,7 @@ async function proCameraStartLiveDetection(){
 
 async function proCameraCapture(){
  if(proCameraBusy)return;proCameraBusy=true;const btn=document.getElementById('pc-shutter');if(btn)btn.disabled=true;
- try{await proCameraStopLiveDetection();proCameraSetStatus('جارٍ التقاط الصورة الأصلية…');const cp=CameraPreviewPlugin(),r=await cp.capture({quality:100});const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');if(!raw)throw Error('لم يتم التقاط صورة');
+ try{await proCameraStopLiveDetection();for(let wait=0;pcLiveBusy&&wait<30;wait++)await new Promise(resolve=>setTimeout(resolve,50));proCameraSetStatus('جارٍ التقاط الصورة الأصلية…');const cp=CameraPreviewPlugin(),r=await cp.capture({quality:100});const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');if(!raw)throw Error('لم يتم التقاط صورة');
  const blob=b64ToBlob(raw,'image/jpeg');pcOriginal=await proCameraLoadImage(blob);pcScanResult=null;pcDetectedCorners=null;pcRotation=0;pcEnhance=true;pcGray=false;pcBW=false;pcCrop=0;pcPerspective=false;pcEditingCorners=false;pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]];await proCameraStop();
  document.getElementById('pc-review').hidden=false;document.getElementById('pc-guide').hidden=true;document.getElementById('pc-live-tools').hidden=true;document.getElementById('pc-actions').hidden=true;document.getElementById('pc-edit-tools').hidden=false;document.getElementById('pc-review-actions').hidden=false;
  await proCameraAutoDetect();

@@ -1,7 +1,7 @@
 // Enhanced in-app document camera. Keeps the existing Supabase upload contract: returns a JPEG Blob.
 const CameraPreviewPlugin=()=>((window.Capacitor||{}).Plugins||{}).CameraPreview||null;
 let proCameraBlobUrl=null,proCameraFlash='off',proCameraModes=[],proCameraResolve=null,proCameraBusy=false;
-let pcOriginal=null,pcRotation=0,pcEnhance=true,pcGray=false,pcCrop=0,pcZoom=1,pcMaxZoom=1,pcEditingCorners=false;
+let pcOriginal=null,pcRotation=0,pcEnhance=true,pcGray=false,pcBW=false,pcCrop=0,pcZoom=1,pcMaxZoom=1,pcEditingCorners=false;
 let pcScanResult=null,pcDetectedCorners=null,pcCornerEditor=null;
 let pcPerspective=false,pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]],pcDrag=-1;
 function cameraOverlayHtml(){return `<section id="pro-camera" role="dialog" aria-modal="true" aria-label="كاميرا المستندات">
@@ -12,7 +12,7 @@ function cameraOverlayHtml(){return `<section id="pro-camera" role="dialog" aria
 <div class="pc-bottom">
 <div class="pc-live-tools" id="pc-live-tools"><button onclick="proCameraZoom(-1)">− تقريب</button><span id="pc-zoom-label">1×</span><button onclick="proCameraZoom(1)">+ تقريب</button><span class="pc-tip">ثبّت الهاتف وتجنب الظلال</span></div>
 <div class="pc-edit-tools" id="pc-edit-tools" hidden>
-<div class="pc-edit-row"><button onclick="proCameraRotate()">↻ تدوير</button><button id="pc-enhance" class="selected" onclick="proCameraToggleEnhance()">تحسين الوضوح</button><button id="pc-gray" onclick="proCameraToggleGray()">أبيض وأسود</button></div>
+<div class="pc-edit-row"><button onclick="proCameraRotate()">↻ تدوير</button><button id="pc-enhance" class="selected" onclick="proCameraToggleEnhance()">تحسين الوضوح</button><button id="pc-gray" onclick="proCameraToggleGray()">رمادي</button><button id="pc-bw" onclick="proCameraToggleBW()">أبيض وأسود</button></div>
 <label>قص الحواف <input id="pc-crop" type="range" min="0" max="15" value="0" oninput="proCameraSetCrop(this.value)"></label>
 <div class="pc-edit-row"><button id="pc-auto-detect" onclick="proCameraAutoDetect()">اكتشاف الورقة تلقائيًا</button><button id="pc-edit-detected" onclick="proCameraEditDetectedCorners()" hidden>تعديل الأركان يدويًا</button><button id="pc-perspective" onclick="proCameraTogglePerspective()">تصحيح المنظور</button><button onclick="proCameraResetCorners()">إعادة ضبط الأركان</button></div><div class="pc-edit-note" id="pc-corner-note">اسحب الدوائر الأربع لتحديد أركان الورقة بدقة</div></div>
 <div class="pc-actions" id="pc-actions"><button class="pc-cancel" onclick="proCameraCancel()">إلغاء</button><button class="pc-shutter" id="pc-shutter" onclick="proCameraCapture()"><span></span></button><button class="pc-flip" onclick="proCameraFlip()">↻</button></div>
@@ -39,7 +39,7 @@ async function proCameraZoom(dir){const cp=CameraPreviewPlugin();if(!cp)return;c
 async function proCameraCapture(){
  if(proCameraBusy)return;proCameraBusy=true;const btn=document.getElementById('pc-shutter');if(btn)btn.disabled=true;
  try{proCameraSetStatus('جارٍ التقاط الصورة الأصلية…');const cp=CameraPreviewPlugin(),r=await cp.capture({quality:100});const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');if(!raw)throw Error('لم يتم التقاط صورة');
- const blob=b64ToBlob(raw,'image/jpeg');pcOriginal=await proCameraLoadImage(blob);pcScanResult=null;pcDetectedCorners=null;pcRotation=0;pcEnhance=true;pcGray=false;pcCrop=0;pcPerspective=false;pcEditingCorners=false;pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]];await proCameraStop();
+ const blob=b64ToBlob(raw,'image/jpeg');pcOriginal=await proCameraLoadImage(blob);pcScanResult=null;pcDetectedCorners=null;pcRotation=0;pcEnhance=true;pcGray=false;pcBW=false;pcCrop=0;pcPerspective=false;pcEditingCorners=false;pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]];await proCameraStop();
  document.getElementById('pc-review').hidden=false;document.getElementById('pc-guide').hidden=true;document.getElementById('pc-live-tools').hidden=true;document.getElementById('pc-actions').hidden=true;document.getElementById('pc-edit-tools').hidden=false;document.getElementById('pc-review-actions').hidden=false;
  await proCameraAutoDetect();
  }catch(e){proCameraSetStatus('تعذر التصوير: '+(e.message||'حاول مرة أخرى'))}
@@ -57,10 +57,10 @@ async function proCameraRender(){
  if(pcCrop){const cut=Math.round(Math.min(work.width,work.height)*pcCrop/100),cw=Math.max(1,work.width-2*cut),ch=Math.max(1,work.height-2*cut),tmp=document.createElement('canvas');tmp.width=cw;tmp.height=ch;tmp.getContext('2d').drawImage(work,cut,cut,cw,ch,0,0,cw,ch);work.width=cw;work.height=ch;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
  if(Math.max(work.width,work.height)>2800){const scale=2800/Math.max(work.width,work.height),nw=Math.max(1,Math.round(work.width*scale)),nh=Math.max(1,Math.round(work.height*scale)),tmp=document.createElement('canvas');tmp.width=nw;tmp.height=nh;tmp.getContext('2d',{alpha:false}).drawImage(work,0,0,nw,nh);work.width=nw;work.height=nh;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
  const iw=work.width,ih=work.height;
- if(pcEnhance||pcGray){
+ if(pcEnhance||pcGray||pcBW){
   const scanner=window.DocumentScanner;
   if(!scanner||typeof scanner.enhance!=='function')throw Error('محرك تحسين المستند غير محمل');
-  const frame=ctx.getImageData(0,0,iw,ih),mode=pcGray?'gray':(pcEnhance?'magic':'original');
+  const frame=ctx.getImageData(0,0,iw,ih),mode=pcBW?'bw':(pcGray?'gray':(pcEnhance?'magic':'original'));
   frame.data.set(scanner.enhance(frame.data,iw,ih,mode));
   ctx.putImageData(frame,0,0);
  }
@@ -68,13 +68,14 @@ async function proCameraRender(){
  const stage=document.querySelector('.pc-crop-stage');if(stage){stage.style.width='auto';stage.style.aspectRatio='auto'}
  if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);
  const out=await new Promise(res=>c.toBlob(res,'image/jpeg',.97));if(!out)throw Error('فشل تجهيز الصورة');proCameraBlobUrl=URL.createObjectURL(out);
- const e=document.getElementById('pc-enhance'),g=document.getElementById('pc-gray');if(e)e.classList.toggle('selected',pcEnhance);if(g)g.classList.toggle('selected',pcGray);
+ const e=document.getElementById('pc-enhance'),g=document.getElementById('pc-gray'),b=document.getElementById('pc-bw');if(e)e.classList.toggle('selected',pcEnhance);if(g)g.classList.toggle('selected',pcGray);if(b)b.classList.toggle('selected',pcBW);
  proCameraUpdateCorners();
 }
 async function proCameraRetake(){pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;pcEditingCorners=false;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}document.getElementById('pc-review').hidden=true;document.getElementById('pc-guide').hidden=false;document.getElementById('pc-live-tools').hidden=false;document.getElementById('pc-actions').hidden=false;document.getElementById('pc-edit-tools').hidden=true;document.getElementById('pc-review-actions').hidden=true;const editBtn=document.getElementById('pc-edit-detected');if(editBtn)editBtn.hidden=true;if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;try{await proCameraStart()}catch(e){proCameraSetStatus('تعذر إعادة تشغيل الكاميرا')}}
 async function proCameraRotate(){pcRotation=(pcRotation+90)%360;if(pcPerspective)pcCorners=pcCorners.map(([x,y])=>[1-y,x]);proCameraUpdateCorners();await proCameraRender()}
-async function proCameraToggleEnhance(){pcEnhance=!pcEnhance;await proCameraRender()}
-async function proCameraToggleGray(){pcGray=!pcGray;if(pcGray)pcEnhance=false;await proCameraRender()}
+async function proCameraToggleEnhance(){pcEnhance=!pcEnhance;if(pcEnhance){pcGray=false;pcBW=false}await proCameraRender()}
+async function proCameraToggleGray(){pcGray=!pcGray;if(pcGray){pcEnhance=false;pcBW=false}await proCameraRender()}
+async function proCameraToggleBW(){pcBW=!pcBW;if(pcBW){pcEnhance=false;pcGray=false}await proCameraRender()}
 async function proCameraSetCrop(v){pcCrop=Number(v)||0;await proCameraRender()}
 async function proCameraAccept(){if(!proCameraResolve)return;try{if(pcEditingCorners){pcEditingCorners=false;const e=document.getElementById('pc-corners'),b=document.getElementById('pc-perspective');if(e)e.style.display='none';if(b)b.textContent='تصحيح المنظور';await proCameraRender()}if(!proCameraBlobUrl)throw Error('الصورة غير جاهزة');const response=await fetch(proCameraBlobUrl),blob=await response.blob();const done=proCameraResolve;proCameraResolve=null;proCameraCleanup();done(blob)}catch(e){proCameraSetStatus('تعذر تجهيز الصورة للحفظ: '+(e.message||''))}}
 async function proCameraCancel(){const done=proCameraResolve;proCameraResolve=null;await proCameraStop();proCameraCleanup();if(done)done(null)}

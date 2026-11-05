@@ -6,7 +6,7 @@ let pcScanResult=null,pcDetectedCorners=null,pcCornerEditor=null;
 let pcPerspective=false,pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]],pcDrag=-1;
 function cameraOverlayHtml(){return `<section id="pro-camera" role="dialog" aria-modal="true" aria-label="كاميرا المستندات">
 <header class="pc-top"><button class="pc-icon" onclick="proCameraCancel()" aria-label="إغلاق">✕</button><span>ماسح مستندات السيارة</span><button class="pc-icon" id="pc-flash" onclick="proCameraToggleFlash()" aria-label="الفلاش">⚡</button></header>
-<div class="pc-hint" id="pc-hint">ضع المستند كاملًا داخل الإطار واجعل الهاتف موازيًا له</div>
+<div class="pc-hint" id="pc-hint">ضع الورقة كاملة داخل الإطار؛ سيكتشف التطبيق حدودها ويصحح ميلها تلقائيًا</div>
 <div class="pc-guide" id="pc-guide"><i></i><i></i><i></i><i></i><div class="pc-guide-label">حافظ على ظهور أركان المستند</div></div>
 <div class="pc-review" id="pc-review" hidden><div class="pc-crop-stage"><canvas id="pc-canvas"></canvas><div id="pc-scan-editor" class="pc-scan-editor"></div><svg id="pc-corners" class="pc-corners" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="pc-poly" points="80,80 920,80 920,920 80,920"></polygon><circle data-corner="0" cx="80" cy="80" r="24"></circle><circle data-corner="1" cx="920" cy="80" r="24"></circle><circle data-corner="2" cx="920" cy="920" r="24"></circle><circle data-corner="3" cx="80" cy="920" r="24"></circle></svg></div></div>
 <div class="pc-bottom">
@@ -25,7 +25,7 @@ async function proCameraStart(){
  try{const f=await cp.getSupportedFlashModes();proCameraModes=f.result||[]}catch{proCameraModes=[]}
  const flash=document.getElementById('pc-flash');if(flash){flash.hidden=false;flash.textContent='LED';flash.title=proCameraModes.length?'تشغيل فلاش LED':'جرّب تشغيل فلاش LED';}
  try{const z=await cp.getMaxZoom();pcMaxZoom=Number(z.maxZoom||z.value||1)||1}catch{pcMaxZoom=1}
- pcZoom=1;proCameraSetStatus('اقترب من المستند مع إظهار الأركان الأربعة');
+ pcZoom=1;proCameraSetStatus('وجّه الكاميرا لتظهر الورقة كاملة؛ المحاذاة ستتم تلقائيًا بعد التصوير');
 }
 async function proCameraStop(){const cp=CameraPreviewPlugin();if(cp)try{await cp.stop()}catch{}}
 function proCameraCleanup(){document.body.classList.remove('cam-active');document.getElementById('pro-camera')?.remove();if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}proCameraFlash='off';proCameraModes=[]}

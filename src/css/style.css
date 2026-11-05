@@ -133,3 +133,5 @@ body.cam-active nav,body.cam-active #toast,body.cam-active #modal{display:none!i
 #pc-auto-detect:active{filter:brightness(1.15)}
 .pc-crop-stage{max-width:100%;overflow:hidden}
 .pc-edit-tools .pc-edit-row{margin-top:7px}
+
+.pc-scan-editor{position:absolute;inset:0;z-index:5;display:none;touch-action:none;background:#080808ee;border-radius:8px;overflow:hidden}.pc-scan-editor .scanic-corner-editor{position:absolute;inset:0;width:100%;height:100%}.pc-scan-editor canvas{max-width:100%;max-height:100%}

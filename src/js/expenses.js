@@ -142,14 +142,24 @@ function logHtml(){
   let h=`<div class="row sum"><div class="sumgrid"><span>مدين<b class="num neg">${fmt(dr)}</b></span><span>دائن<b class="num pos">${fmt(cr)}</b></span><span>الصافي<b class="num ${sign(net)}">${fmt(net)}</b></span><span>تحويلات<b class="num">${transfers}</b></span></div></div>`;
   if(!list.length)return h+(S.tx.length?'<p class="empty">مفيش حركات مطابقة.</p>':emptyBox('🧾','لسه مفيش حركات','أول حركة تسجلها هتظهر هنا.','+ حركة جديدة',"go('add')"));
   const MAX=300;
-  h+=list.slice(0,MAX).map(t=>`<div class="row"><div>${t.k==='t'?'تحويل بين المحافظ':esc(aName(t.ac))}${t.n?' — '+esc(t.n):''}<small>${esc(t.d)} · ${esc(wName(t.w))}${t.k==='t'?' ← '+esc(wName(t.to)):''}${t.source?' · المصدر: '+esc(t.source):''}</small></div><div class="acts"><span class="num ${t.k==='c'||(t.k==='t'&&t.to===F.w)?'pos':t.k==='t'?'':'neg'}">${t.k==='t'?'⇄ ':t.k==='c'?'+':'−'}${fmt(t.a)}</span><button class="ghost" onclick="editTx('${t.id}')">تعديل</button><button class="x" onclick="delTx('${t.id}')" aria-label="حذف">✕</button></div></div>`).join('');
+  h+=list.slice(0,MAX).map(t=>`<div class="row"><div>${t.k==='t'?'تحويل بين المحافظ':esc(aName(t.ac))}${t.n?' — '+esc(t.n):''}<small>${esc(t.d)} · ${esc(wName(t.w))}${t.k==='t'?' ← '+esc(wName(t.to)):''}${t.source?' · المصدر: '+esc(t.source):''}</small></div><div class="acts"><span class="num ${t.k==='c'||(t.k==='t'&&t.to===F.w)?'pos':t.k==='t'?'':'neg'}">${t.k==='t'?'⇄ ':t.k==='c'?'+':'−'}${fmt(t.a)}</span><button class="ghost" onclick="editTx('${t.id}')">تعديل</button><button class="x" onclick="delTx('${t.id}')" aria-label="عكس الحركة">↶</button></div></div>`).join('');
   if(list.length>MAX)h+=`<p class="empty">معروض أحدث ${MAX} حركة من ${list.length} (الإجماليات لكل الحركات المطابقة).</p>`;
   return h;
 }
 async function delTx(id){
-  const target=S.tx.find(t=>t.id===id);if(target&&target.debtAction!=='none')return toast('حركات السلف والسداد لا تُحذف من السجل حتى لا يختل رصيد المديونية');
-  if(!confirm('حذف الحركة دي؟'))return;
-  await run(async()=>{ck(await sb.from('transactions').delete().eq('id',id));await loadExpenses();renderLog()},'تم الحذف');
+  const target=S.tx.find(t=>t.id===id);if(!target)return toast('الحركة غير موجودة');
+  if(target.debtAction!=='none'||target.adj)return toast('حركات السلف والسداد والتسويات لا تُعكس من السجل');
+  if(!hasScreen('add'))return toast('تحتاج صلاحية تسجيل حركة جديدة لعكس الحركة');
+  const note='عكس الحركة '+id+(target.n?' — '+target.n:'');
+  if(S.tx.some(t=>t.adj&&t.n===note))return toast('تم عكس الحركة دي بالفعل');
+  if(!confirm('بدل حذف الحركة، هنسجل حركة عكسية بنفس المبلغ ونحتفظ بالأصل في السجل. نكمل؟'))return;
+  await run(async()=>{
+    const reversal=target.k==='t'
+      ?{wallet_id:target.to,to_wallet_id:target.w,account_id:null,kind:'t'}
+      :{wallet_id:target.w,to_wallet_id:null,account_id:target.ac,kind:target.k==='d'?'c':'d'};
+    ck(await sb.from('transactions').insert({...reversal,amount:target.a,tx_date:today(),note,source:'عكس حركة مالية',source_id:null,debt_id:null,debt_action:'none',is_adjustment:true}));
+    await loadExpenses();renderLog();
+  },'تم تسجيل الحركة العكسية مع الاحتفاظ بالحركة الأصلية');
 }
 
 /* ---------- wallets & accounts management ---------- */

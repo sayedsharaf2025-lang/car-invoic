@@ -210,7 +210,8 @@ async function exportData(){
     const data={app:'cashbook',version:3,exported_at:new Date().toISOString(),
       wallets:S.wallets.map(w=>({name:w.name,type:w.type,opening_balance:w.opening})),
       accounts:S.accounts.map(a=>a.name),sources:S.sources.map(s=>({name:s.name,type:s.type,active:s.active})),
-      transactions:S.tx.map(t=>({wallet:S.wallets.findIndex(w=>w.id===t.w),to_wallet:S.wallets.findIndex(w=>w.id===t.to),account:t.ac?aName(t.ac):'',kind:t.k,amount:t.a,date:t.d,note:t.n,source:t.source||'',source_name:(S.sources.find(s=>s.id===t.sourceId)||{}).name||'',debt_action:t.debtAction,debt_person:(S.debts.find(d=>d.id===t.debtId)||{}).person||'',adjustment:t.adj}))};
+      debts:S.debts.map(d=>({debt_key:[d.person,d.date,d.initial,d.note||''].join('|'),person_name:d.person,initial_amount:d.initial,debt_date:d.date,note:d.note||''})),
+      transactions:S.tx.map(t=>{const d=S.debts.find(x=>x.id===t.debtId);return {wallet:S.wallets.findIndex(w=>w.id===t.w),to_wallet:S.wallets.findIndex(w=>w.id===t.to),account:t.ac?aName(t.ac):'',kind:t.k,amount:t.a,date:t.d,note:t.n,source:t.source||'',source_name:(S.sources.find(s=>s.id===t.sourceId)||{}).name||'',debt_action:t.debtAction,debt_key:d?[d.person,d.date,d.initial,d.note||''].join('|'):'',adjustment:t.adj}})};
     const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
     await shareFile(blob,`cashbook-backup-${today()}.json`,'نسخة احتياطية - دفتر النقدية');
   });
@@ -246,17 +247,27 @@ async function importData(){
       const name=String(s.name||'').trim().slice(0,100);if(!name)continue;
       if(!sourceMap[name]){const r=ck(await sb.from('money_sources').insert({name,source_type:['salary','colleague','mobile_invoice','custody','customer','supplier','other'].includes(s.type)?s.type:'other',is_active:s.active!==false}).select().single());sourceMap[name]=r.data.id}
     }
+    // Recreate debt records before restoring linked issue/repayment transactions.
+    const debtMap={};S.debts.forEach(d=>debtMap[[d.person,d.date,d.initial,d.note||''].join('|')]=d.id);
+    for(const d of (d.debts||[])){
+      const dk=String(d.debt_key||[d.person_name,d.debt_date,d.initial_amount,d.note||''].join('|'));
+      if(!debtMap[dk]){
+        const r=ck(await sb.from('debts').insert({person_name:String(d.person_name||'').slice(0,120),initial_amount:round2(+d.initial_amount),debt_date:d.debt_date,note:String(d.note||'').slice(0,300)}).select().single());
+        debtMap[dk]=r.data.id;
+      }
+    }
     // transactions, skipping ones that already exist
     const key=(w,a,k,amt,dt,n)=>[w,a,k,round2(amt),dt,n].join('|');
     const have={};S.tx.forEach(t=>{const k=key(t.w,t.k==='t'?t.to:t.ac,t.k,t.a,t.d,t.n);have[k]=(have[k]||0)+1});
     const rows=[];let skipped=0;
     for(const t of d.transactions){
       const w=wmap[t.wallet],to=t.kind==='t'?wmap[t.to_wallet]:null,a=t.kind==='t'?null:(amap[String(t.account||'').trim()]||null),amt=+t.amount,note=String(t.note||'').slice(0,120);
-      if(!w||!(amt>0)||!['c','d','t'].includes(t.kind)||(t.kind==='t'?(!to||to===w):(t.kind==='d'&&!a))||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(t.date)){skipped++;continue}
+      const debt_action=['issued','repayment'].includes(t.debt_action)?t.debt_action:'none',debt_id=t.debt_key?debtMap[t.debt_key]||null:null;
+      if(!w||!(amt>0)||!['c','d','t'].includes(t.kind)||(t.kind==='t'?(!to||to===w):(t.kind==='d'&&!a&&!(debt_action==='issued'&&debt_id)))||((debt_action!=='none')&&!debt_id)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(t.date)){skipped++;continue}
       const k=key(w,a||to,t.kind,amt,t.date,note);
       if(have[k]>0){have[k]--;skipped++;continue}
       const sourceName=String(t.source_name||t.source||'').trim(),source_id=sourceMap[sourceName]||null;
-      rows.push({wallet_id:w,to_wallet_id:to,account_id:a,kind:t.kind,amount:round2(amt),tx_date:t.date,note,source:String(t.source||sourceName).slice(0,120),source_id,is_adjustment:!!t.adjustment});
+      rows.push({wallet_id:w,to_wallet_id:to,account_id:a,kind:t.kind,amount:round2(amt),tx_date:t.date,note,source:String(t.source||sourceName).slice(0,120),source_id,debt_id,debt_action,is_adjustment:!!t.adjustment});
     }
     for(let i=0;i<rows.length;i+=200)ck(await sb.from('transactions').insert(rows.slice(i,i+200)));
     await reloadExp();

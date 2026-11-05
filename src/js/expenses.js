@@ -1,4 +1,4 @@
-let S={wallets:[],accounts:[],tx:[]},kind='d',F={a:'',w:'',m:'',q:''},lastW='',transferMode=false;
+let S={wallets:[],accounts:[],tx:[],sources:[],debts:[]},kind='d',F={a:'',w:'',m:'',q:'',source:''},lastW='',transferMode=false,withdrawalMode='expense',depositMode='income';
 const TYPES={cash:'نقدي',visa:'فيزا',bank:'بنك'};
 const ADJ_ACCOUNT='تسوية';
 const typeName=t=>TYPES[t]||t;
@@ -11,17 +11,17 @@ const bal=w=>round2(S.tx.reduce((a,t)=>a+txWalletDelta(t,w.id),w.opening));
 const sign=n=>n<0?'neg':'pos';
 const opts=(arr,sel,all)=>(all?`<option value="">${all}</option>`:'')+arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
 const wOpts=(sel,all)=>opts(S.wallets.map(w=>[w.id,`${w.name} (${typeName(w.type)})`]),sel,all);
-const aOpts=(sel,all)=>opts(S.accounts.map(a=>[a.id,a.name]),sel,all);
+const aOpts=(sel,all)=>opts(S.accounts.map(a=>[a.id,a.name]),sel,all);\nconst sourceOpts=(sel,all)=>opts(S.sources.filter(s=>s.active).map(s=>[s.id,s.name]),sel,all);\nconst debtOpts=(sel,all)=>opts(S.debts.map(d=>[d.id,`${d.person} — متبقي ${fmt(d.remaining)} ج.م`]),sel,all);
 
 async function loadExpenses(){
-  const [w,a,t]=await Promise.all([
+  const [w,a,t,src,debts]=await Promise.all([
     fetchAll(()=>sb.from('wallets').select('*').order('created_at').order('id')),
     fetchAll(()=>sb.from('accounts').select('*').order('created_at').order('id')),
     fetchAll(()=>sb.from('transactions').select('*').order('tx_date',{ascending:false}).order('created_at',{ascending:false}).order('id'))
   ]);
   S.wallets=w.map(x=>({id:x.id,name:x.name,type:x.type,opening:+x.opening_balance}));
   S.accounts=a.map(x=>({id:x.id,name:x.name}));
-  S.tx=t.map(x=>({id:x.id,k:x.kind,w:x.wallet_id,to:x.to_wallet_id||null,ac:x.account_id,a:+x.amount,d:x.tx_date,n:x.note||'',source:x.source||'',adj:!!x.is_adjustment}));
+  S.tx=t.map(x=>({id:x.id,k:x.kind,w:x.wallet_id,to:x.to_wallet_id||null,ac:x.account_id,a:+x.amount,d:x.tx_date,n:x.note||'',source:x.source||'',sourceId:x.source_id||null,debtId:x.debt_id||null,debtAction:x.debt_action||'none',adj:!!x.is_adjustment}));\n  S.sources=src.map(x=>({id:x.id,name:x.name,type:x.source_type,active:x.is_active}));\n  S.debts=debts.map(d=>{const repaid=t.filter(x=>x.debt_id===d.id&&x.debt_action==='repayment').reduce((n,x)=>n+Number(x.amount),0);return {id:d.id,person:d.person_name,initial:+d.initial_amount,remaining:round2(Math.max(0,+d.initial_amount-repaid)),date:d.debt_date,note:d.note}});
 }
 async function reloadExp(){await loadExpenses();render()}
 
@@ -67,26 +67,30 @@ async function doAdjust(id){
 
 /* ---------- add transaction ---------- */
 function viewAdd(){
-  if(!LOADED)return loadingHtml();
-  if(!S.wallets.length||!S.accounts.length)
-    return `<h1>حركة جديدة</h1>`+emptyBox('📒','محتاج محفظة وحساب الأول','لازم تضيف محفظة واحدة وحساب واحد على الأقل قبل تسجيل أي حركة.','المحافظ والحسابات',"go('manage')");
-  kind='d';transferMode=false;
-  return `<h1>حركة مالية جديدة</h1>
-  <div class="two seg"><button id="kd" class="ghost on" onclick="setKind('d')">صرف</button><button id="kc" class="ghost" onclick="setKind('c')">قبض / إيداع</button></div>
-  <button class="ghost wide" onclick="setTransferMode()">⇄ تحويل بين محفظتين</button>
-  <label>المحفظة</label><select id="fw">${wOpts(lastW)}</select>
-  <div id="toWalletBox" hidden><label>إلى محفظة</label><select id="tw">${wOpts('')}</select></div>
-  <div id="accountBox"><label>الحساب / البند</label><select id="fa">${aOpts('')}</select></div>
-  <label>المبلغ</label><input id="am" type="text" inputmode="decimal" dir="ltr" placeholder="0.00">
-  <label>التاريخ</label><input id="dt" type="date" value="${today()}">
-  <label>مصدر الأموال / الجهة</label><input id="src" maxlength="120" placeholder="عميل، مورد، جهة، أو مصدر التمويل">
-  <label>ملاحظة</label>
-  <div class="inrow"><input id="nt" maxlength="120" placeholder="اكتب أو اتكلم"><button id="mic" class="mic" type="button" onclick="dictate()" aria-label="إدخال صوتي">🎤</button></div>
-  <button class="go" onclick="saveTx()">حفظ</button>
-  <button class="ghost wide" onclick="history.back()">إلغاء</button>`;
+ if(!LOADED)return loadingHtml();
+ if(!S.wallets.length)return `<h1>حركة جديدة</h1>`+emptyBox('👛','محتاج محفظة الأول','ضيف محفظة كاش أو فيزا أو بنك قبل تسجيل الحركة.','المحافظ والحسابات',"go('manage')");
+ kind='d';transferMode=false;withdrawalMode='expense';depositMode='income';
+ return `<h1>حركة مالية جديدة</h1>
+ <div class="two seg"><button id="kd" class="ghost on" onclick="setKind('d')">سحب</button><button id="kc" class="ghost" onclick="setKind('c')">إيداع</button></div>
+ <button class="ghost wide" onclick="setTransferMode()">⇄ تحويل بين محفظتين</button>
+ <div id="fromWalletBox"><label>هتسحب منين؟ / هتحط الفلوس فين؟</label><select id="fw">${wOpts(lastW)}</select></div>
+ <div id="toWalletBox" hidden><label>إلى محفظة</label><select id="tw">${wOpts('')}</select></div>
+ <div id="withdrawalBox"><label>الفلوس رايحة فين؟</label><select id="withdrawalMode" onchange="setWithdrawalMode(this.value)"><option value="expense">مصروف / حساب</option><option value="debt">سلفة لشخص (مديونية)</option></select>
+ <div id="expenseAccountBox"><label>الحساب / بند المصروف</label><select id="fa">${aOpts('')}</select></div>
+ <div id="debtPersonBox" hidden><label>اسم الشخص المستلف</label><input id="debtPerson" maxlength="120" placeholder="اسم الشخص"><label>ملاحظة السلفة</label><input id="debtNote" maxlength="300" placeholder="سبب أو تفاصيل السلفة"></div></div>
+ <div id="depositBox" hidden><label>نوع الإيداع</label><select id="depositMode" onchange="setDepositMode(this.value)"><option value="income">إيراد جديد</option><option value="repay">استرداد سلفة / سداد مديونية</option></select>
+ <div id="incomeSourceBox"><label>خدت الفلوس منين؟ / مصدر الأموال</label><select id="sourceId">${sourceOpts('','اختار مصدر الأموال')}</select><button type="button" class="ghost wide" onclick="sourceModal()">+ إضافة مصدر جديد</button></div>
+ <div id="repayDebtBox" hidden><label>مين اللي رجّع الفلوس؟</label><select id="repayDebt">${debtOpts('','اختار المديونية')}</select></div></div>
+ <label>المبلغ</label><input id="am" type="text" inputmode="decimal" dir="ltr" placeholder="0.00"><label>التاريخ</label><input id="dt" type="date" value="${today()}">
+ <label>ملاحظة / بيان</label><div class="inrow"><input id="nt" maxlength="120" placeholder="اكتب أو اتكلم"><button id="mic" class="mic" type="button" onclick="dictate()" aria-label="إدخال صوتي">🎤</button></div>
+ <button class="go" onclick="saveTx()">حفظ الحركة</button><button class="ghost wide" onclick="history.back()">إلغاء</button>`;
 }
-function setKind(k){transferMode=false;kind=k;$('#kd').classList.toggle('on',k==='d');$('#kc').classList.toggle('on',k==='c');$('#toWalletBox').hidden=true;$('#accountBox').hidden=false}
-function setTransferMode(){transferMode=true;$('#toWalletBox').hidden=false;$('#accountBox').hidden=true;$('#kd').classList.remove('on');$('#kc').classList.remove('on')}
+function setKind(k){transferMode=false;kind=k;$('#kd').classList.toggle('on',k==='d');$('#kc').classList.toggle('on',k==='c');$('#toWalletBox').hidden=true;$('#withdrawalBox').hidden=k!=='d';$('#depositBox').hidden=k!=='c';$('#fromWalletBox').hidden=false}
+function setWithdrawalMode(v){withdrawalMode=v;$('#expenseAccountBox').hidden=v!=='expense';$('#debtPersonBox').hidden=v!=='debt'}
+function setDepositMode(v){depositMode=v;$('#incomeSourceBox').hidden=v!=='income';$('#repayDebtBox').hidden=v!=='repay'}
+function setTransferMode(){transferMode=true;$('#toWalletBox').hidden=false;$('#withdrawalBox').hidden=true;$('#depositBox').hidden=true;$('#fromWalletBox').hidden=false;$('#kd').classList.remove('on');$('#kc').classList.remove('on')}
+function sourceModal(id){const src=id?S.sources.find(x=>x.id===id):{name:'',type:'other'};modal(`<h2>${id?'تعديل مصدر':'مصدر أموال جديد'}</h2><label>اسم المصدر</label><input id="sourceName" maxlength="100" value="${esc(src.name)}"><label>نوع المصدر</label><select id="sourceType">${opts([['salary','مرتب'],['colleague','زميل'],['mobile_invoice','تحصيل فواتير موبايلات'],['custody','عهدة'],['customer','عميل'],['supplier','مورد'],['other','مصدر آخر']],src.type)}</select><button class="go" onclick="saveSource(${id?`'${id}'`:''})">حفظ المصدر</button>`)}
+async function saveSource(id){const name=$('#sourceName').value.trim(),source_type=$('#sourceType').value;if(!name)return toast('اكتب اسم المصدر');await run(async()=>{ck(id?await sb.from('money_sources').update({name,source_type}).eq('id',id):await sb.from('money_sources').insert({name,source_type}));await loadExpenses();render()},'تم حفظ المصدر')}
 async function dictate(){
   const b=$('#mic');b.classList.add('rec');
   try{
@@ -96,18 +100,20 @@ async function dictate(){
   finally{b.classList.remove('rec')}
 }
 async function saveTx(){
-  const wallet_id=$('#fw').value,to_wallet_id=transferMode?$('#tw').value:null,account_id=transferMode?null:$('#fa').value,amount=Number(num($('#am').value)),tx_date=$('#dt').value||today(),note=$('#nt').value.trim().slice(0,120),source=$('#src').value.trim().slice(0,120);
-  if(!wallet_id)return toast('اختار المحفظة');
-  if(!(Number.isFinite(amount)&&amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(tx_date))return toast('اختار تاريخ صحيح');
-  if(transferMode&&(!to_wallet_id||to_wallet_id===wallet_id))return toast('اختار محفظتين مختلفتين');
-  if(!transferMode&&!account_id)return toast('اختار الحساب');
-  await run(async()=>{
-    ck(await sb.from('transactions').insert({wallet_id,to_wallet_id,account_id,kind:transferMode?'t':kind,amount:round2(amount),tx_date,note,source}));
-    lastW=wallet_id;await loadExpenses();go('exp',null,true);
-  },'تم الحفظ');
+ const wallet_id=$('#fw').value,amount=Number(num($('#am').value)),tx_date=$('#dt').value||today(),note=$('#nt').value.trim().slice(0,120);
+ if(!wallet_id)return toast('اختار المحفظة');if(!(Number.isFinite(amount)&&amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(tx_date))return toast('اختار تاريخ صحيح');
+ await run(async()=>{
+  if(transferMode){const to_wallet_id=$('#tw').value;if(!to_wallet_id||to_wallet_id===wallet_id)throw new Error('اختار محفظتين مختلفتين');ck(await sb.from('transactions').insert({wallet_id,to_wallet_id,account_id:null,kind:'t',amount:round2(amount),tx_date,note,source:'تحويل داخلي'}))}
+  else if(kind==='c'){
+   if(depositMode==='repay'){const debt_id=$('#repayDebt').value;if(!debt_id)throw new Error('اختار المديونية اللي اتسددت');const debt=S.debts.find(d=>d.id===debt_id);if(!debt||amount>debt.remaining+0.005)throw new Error('مبلغ السداد أكبر من المتبقي على الشخص');ck(await sb.from('transactions').insert({wallet_id,account_id:null,kind:'c',amount:round2(amount),tx_date,note,source:'سداد مديونية: '+debt.person,debt_id,debt_action:'repayment'}))}
+   else{const source_id=$('#sourceId').value;if(!source_id)throw new Error('اختار مصدر الأموال');const source=S.sources.find(x=>x.id===source_id);ck(await sb.from('transactions').insert({wallet_id,account_id:null,kind:'c',amount:round2(amount),tx_date,note,source:source?.name||'',source_id,debt_action:'none'}))}
+  }else if(withdrawalMode==='debt'){
+   const person=$('#debtPerson').value.trim(),debtNote=$('#debtNote').value.trim().slice(0,300);if(!person)throw new Error('اكتب اسم الشخص المستلف');const d=ck(await sb.from('debts').insert({person_name:person,initial_amount:round2(amount),debt_date:tx_date,note:debtNote}).select().single());
+   try{ck(await sb.from('transactions').insert({wallet_id,account_id:null,kind:'d',amount:round2(amount),tx_date,note:note||debtNote,source:'سلفة إلى '+person,debt_id:d.data.id,debt_action:'issued'}))}catch(e){await sb.from('debts').delete().eq('id',d.data.id);throw e}
+  }else{const account_id=$('#fa').value;if(!account_id)throw new Error('اختار الحساب أو بند المصروف');ck(await sb.from('transactions').insert({wallet_id,account_id,kind:'d',amount:round2(amount),tx_date,note,source:'',debt_action:'none'}))}
+  lastW=wallet_id;await loadExpenses();go('exp',null,true)
+ },'تم حفظ الحركة')
 }
-
 /* ---------- log ---------- */
 function viewLog(){
   if(!LOADED)return loadingHtml();

@@ -120,7 +120,7 @@ async function saveTx(){
    const person=$('#debtPerson').value.trim(),debtNote=$('#debtNote').value.trim().slice(0,300);if(!person)throw new Error('اكتب اسم الشخص المستلف');const d=ck(await sb.from('debts').insert({person_name:person,initial_amount:round2(amount),debt_date:tx_date,note:debtNote}).select().single());
    try{ck(await sb.from('transactions').insert({wallet_id,account_id:null,kind:'d',amount:round2(amount),tx_date,note:note||debtNote,source:'سلفة إلى '+person,debt_id:d.data.id,debt_action:'issued'}))}catch(e){await sb.from('debts').delete().eq('id',d.data.id);throw e}
   }else{const account_id=$('#fa').value;if(!account_id)throw new Error('اختار الحساب أو بند المصروف');ck(await sb.from('transactions').insert({wallet_id,account_id,kind:'d',amount:round2(amount),tx_date,note,source:'',debt_action:'none'}))}
-  lastW=wallet_id;await loadExpenses();go('exp',null,true)
+  lastW=wallet_id;await loadExpenses();go(hasScreen('exp')?'exp':'add',null,true)
  },'تم حفظ الحركة')
 }
 /* ---------- log ---------- */

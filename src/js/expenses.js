@@ -285,7 +285,7 @@ function viewDebtReport(){
 }
 function repayDebtQuick(id){go('add');setTimeout(()=>{setKind('c');setDepositMode('repay');const el=$('#repayDebt');if(el)el.value=id},0)}
 
-function renderReport(){const m=$('#rm')?$('#rm').value:F.m||today().slice(0,7);F.m=m;const el=$('#reportBody');if(el)el.innerHTML=reportHtml(m)}
+function renderReport(){const m=$('#rm')?$('#rm').value:F.m||today().slice(0,7);F.m=m;const el=$('#reportBody');if(el)el.innerHTML=reportHtml(m);else render()}
 function reportMonthEnd(m){const y=Number(m.slice(0,4)),mo=Number(m.slice(5,7)),d=new Date(y,mo,0).getDate();return m+'-'+String(d).padStart(2,'0')}
 function reportHtml(m){
  const walletMode=!!F.w,isW=walletMode&&F.w!=='all',id=isW?F.w:F.a;if(walletMode&&F.w==='all')return '<p class="empty">اختار المحفظة لعرض التقرير.</p>';if(!id||id==='all')return '<p class="empty">اختار محفظة أو حساب لعرض التقرير.</p>';

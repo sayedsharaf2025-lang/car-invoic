@@ -3,11 +3,12 @@ const CameraPreviewPlugin=()=>((window.Capacitor||{}).Plugins||{}).CameraPreview
 let proCameraBlobUrl=null,proCameraFlash='off',proCameraModes=[],proCameraResolve=null,proCameraBusy=false;
 let pcOriginal=null,pcRotation=0,pcEnhance=true,pcGray=false,pcBW=false,pcCrop=0,pcZoom=1,pcMaxZoom=1,pcEditingCorners=false;
 let pcScanResult=null,pcDetectedCorners=null,pcCornerEditor=null;
+let pcLiveRunning=false,pcLiveBusy=false,pcLiveQuad=null,pcLiveMisses=0;
 let pcPerspective=false,pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]],pcDrag=-1;
 function cameraOverlayHtml(){return `<section id="pro-camera" role="dialog" aria-modal="true" aria-label="كاميرا المستندات">
 <header class="pc-top"><button class="pc-icon" onclick="proCameraCancel()" aria-label="إغلاق">✕</button><span>ماسح مستندات السيارة</span><button class="pc-icon" id="pc-flash" onclick="proCameraToggleFlash()" aria-label="الفلاش">⚡</button></header>
 <div class="pc-hint" id="pc-hint">ضع الورقة كاملة داخل الإطار؛ سيكتشف التطبيق حدودها ويصحح ميلها تلقائيًا</div>
-<div class="pc-guide" id="pc-guide"><i></i><i></i><i></i><i></i><div class="pc-guide-label">حافظ على ظهور أركان المستند</div></div>
+<canvas id="pc-live-overlay" aria-hidden="true"></canvas><div class="pc-guide" id="pc-guide" hidden><i></i><i></i><i></i><i></i><div class="pc-guide-label">حافظ على ظهور أركان المستند</div></div>
 <div class="pc-review" id="pc-review" hidden><div class="pc-crop-stage"><canvas id="pc-canvas"></canvas><svg id="pc-corners" class="pc-corners" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="pc-poly" points="80,80 920,80 920,920 80,920"></polygon><circle data-corner="0" cx="80" cy="80" r="24"></circle><circle data-corner="1" cx="920" cy="80" r="24"></circle><circle data-corner="2" cx="920" cy="920" r="24"></circle><circle data-corner="3" cx="80" cy="920" r="24"></circle></svg></div></div>
 <div class="pc-bottom">
 <div class="pc-live-tools" id="pc-live-tools"><button onclick="proCameraZoom(-1)">− تقريب</button><span id="pc-zoom-label">1×</span><button onclick="proCameraZoom(1)">+ تقريب</button><span class="pc-tip">ثبّت الهاتف وتجنب الظلال</span></div>
@@ -25,9 +26,9 @@ async function proCameraStart(){
  try{const f=await cp.getSupportedFlashModes();proCameraModes=f.result||[]}catch{proCameraModes=[]}
  const flash=document.getElementById('pc-flash');if(flash){flash.hidden=false;flash.textContent='LED';flash.title=proCameraModes.length?'تشغيل فلاش LED':'جرّب تشغيل فلاش LED';}
  try{const z=await cp.getMaxZoom();pcMaxZoom=Number(z.maxZoom||z.value||1)||1}catch{pcMaxZoom=1}
- pcZoom=1;proCameraSetStatus('وجّه الكاميرا لتظهر الورقة كاملة؛ المحاذاة ستتم تلقائيًا بعد التصوير');
+ pcZoom=1;await proCameraStartLiveDetection();
 }
-async function proCameraStop(){const cp=CameraPreviewPlugin();if(cp)try{await cp.stop()}catch{}}
+async function proCameraStop(){await proCameraStopLiveDetection();const cp=CameraPreviewPlugin();if(cp)try{await cp.stop()}catch{}}
 function proCameraCleanup(){document.body.classList.remove('cam-active');document.getElementById('pro-camera')?.remove();if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;pcEditingCorners=false;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}proCameraFlash='off';proCameraModes=[]}
 function captureDocumentImage(){
  const cp=CameraPreviewPlugin();if(!isNative()||!cp)return pickImage();
@@ -36,9 +37,52 @@ function captureDocumentImage(){
  try{await proCameraStart()}catch(e){proCameraCleanup();proCameraResolve=null;try{resolve(await pickImage())}catch(err){toast(errMsg(err));resolve(null)}}});
 }
 async function proCameraZoom(dir){const cp=CameraPreviewPlugin();if(!cp)return;const next=Math.max(1,Math.min(pcMaxZoom,pcZoom+(dir*.5)));try{await cp.setZoom({zoom:next});pcZoom=next;document.getElementById('pc-zoom-label').textContent=next.toFixed(1)+'×'}catch{proCameraSetStatus('التقريب غير مدعوم في هذا الهاتف')}}
+
+function pcDrawLiveOverlay(q,sw,sh){
+ const canvas=document.getElementById('pc-live-overlay');if(!canvas)return;
+ const dpr=Math.min(2,window.devicePixelRatio||1),vw=window.innerWidth,vh=window.innerHeight;
+ if(canvas.width!==Math.round(vw*dpr)||canvas.height!==Math.round(vh*dpr)){canvas.width=Math.round(vw*dpr);canvas.height=Math.round(vh*dpr);canvas.style.width=vw+'px';canvas.style.height=vh+'px'}
+ const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,vw,vh);
+ if(!q||!sw||!sh)return;
+ const scale=Math.max(vw/sw,vh/sh),rw=sw*scale,rh=sh*scale,ox=(vw-rw)/2,oy=(vh-rh)/2;
+ const pts=q.map(p=>({x:ox+p.x*scale,y:oy+p.y*scale}));
+ ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();
+ ctx.fillStyle='rgba(22,205,151,.10)';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#16d19a';ctx.shadowColor='#001b13';ctx.shadowBlur=7;ctx.stroke();
+ ctx.shadowBlur=0;for(const p of pts){ctx.beginPath();ctx.arc(p.x,p.y,7,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#079b75';ctx.stroke()}
+}
+async function proCameraStopLiveDetection(){
+ pcLiveRunning=false;pcLiveQuad=null;pcLiveMisses=0;pcDrawLiveOverlay(null);
+}
+async function proCameraStartLiveDetection(){
+ await proCameraStopLiveDetection();
+ const cp=CameraPreviewPlugin();
+ if(!cp||typeof cp.captureSample!=='function'){proCameraSetStatus('المعاينة الحية تعمل؛ اكتشاف حدود الورقة غير مدعوم في إصدار الكاميرا الحالي');return}
+ pcLiveRunning=true;proCameraSetStatus('حرّك الورقة بحرية؛ الإطار الأخضر سيتبع حدودها تلقائيًا');
+ const run=async()=>{
+  if(!pcLiveRunning||pcLiveBusy)return;
+  pcLiveBusy=true;
+  try{
+   const r=await cp.captureSample({quality:38});
+   const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');
+   if(raw){
+    const im=await proCameraLoadImage(b64ToBlob(raw,'image/jpeg'));
+    const scale=Math.min(1,420/Math.max(im.width,im.height)),sw=Math.max(2,Math.round(im.width*scale)),sh=Math.max(2,Math.round(im.height*scale));
+    const sample=document.createElement('canvas');sample.width=sw;sample.height=sh;
+    const ctx=sample.getContext('2d',{willReadFrequently:true});ctx.drawImage(im,0,0,sw,sh);
+    const scanner=window.DocumentScanner,found=scanner&&scanner.detectDocument?scanner.detectDocument(ctx.getImageData(0,0,sw,sh).data,sw,sh):null;
+    if(found&&found.length===4){pcLiveQuad=found;pcLiveMisses=0;pcDrawLiveOverlay(found,sw,sh)}
+    else if(++pcLiveMisses>=3){pcLiveQuad=null;pcDrawLiveOverlay(null)}
+   }
+  }catch(e){if(pcLiveRunning&&pcLiveMisses++>5){pcLiveQuad=null;pcDrawLiveOverlay(null)}}
+  finally{pcLiveBusy=false}
+  if(pcLiveRunning)setTimeout(run,280);
+ };
+ run();
+}
+
 async function proCameraCapture(){
  if(proCameraBusy)return;proCameraBusy=true;const btn=document.getElementById('pc-shutter');if(btn)btn.disabled=true;
- try{proCameraSetStatus('جارٍ التقاط الصورة الأصلية…');const cp=CameraPreviewPlugin(),r=await cp.capture({quality:100});const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');if(!raw)throw Error('لم يتم التقاط صورة');
+ try{await proCameraStopLiveDetection();proCameraSetStatus('جارٍ التقاط الصورة الأصلية…');const cp=CameraPreviewPlugin(),r=await cp.capture({quality:100});const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');if(!raw)throw Error('لم يتم التقاط صورة');
  const blob=b64ToBlob(raw,'image/jpeg');pcOriginal=await proCameraLoadImage(blob);pcScanResult=null;pcDetectedCorners=null;pcRotation=0;pcEnhance=true;pcGray=false;pcBW=false;pcCrop=0;pcPerspective=false;pcEditingCorners=false;pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]];await proCameraStop();
  document.getElementById('pc-review').hidden=false;document.getElementById('pc-guide').hidden=true;document.getElementById('pc-live-tools').hidden=true;document.getElementById('pc-actions').hidden=true;document.getElementById('pc-edit-tools').hidden=false;document.getElementById('pc-review-actions').hidden=false;
  await proCameraAutoDetect();
@@ -80,7 +124,7 @@ async function proCameraSetCrop(v){pcCrop=Number(v)||0;await proCameraRender()}
 async function proCameraAccept(){if(!proCameraResolve)return;try{if(pcEditingCorners){pcEditingCorners=false;const e=document.getElementById('pc-corners'),b=document.getElementById('pc-perspective');if(e)e.style.display='none';if(b)b.textContent='تصحيح المنظور';await proCameraRender()}if(!proCameraBlobUrl)throw Error('الصورة غير جاهزة');const response=await fetch(proCameraBlobUrl),blob=await response.blob();const done=proCameraResolve;proCameraResolve=null;proCameraCleanup();done(blob)}catch(e){proCameraSetStatus('تعذر تجهيز الصورة للحفظ: '+(e.message||''))}}
 async function proCameraCancel(){const done=proCameraResolve;proCameraResolve=null;await proCameraStop();proCameraCleanup();if(done)done(null)}
 async function proCameraToggleFlash(){const cp=CameraPreviewPlugin();if(!cp)return;const canTorch=proCameraModes.includes('torch');const next=proCameraFlash!=='off'?'off':(canTorch?'torch':(proCameraModes.includes('on')?'on':'torch'));try{await cp.setFlashMode({flashMode:next});proCameraFlash=next;const b=document.getElementById('pc-flash');if(b){b.classList.toggle('active',next!=='off');b.textContent=next==='off'?'LED':'LED ✓'}proCameraSetStatus(next==='off'?'تم إيقاف فلاش LED':'تم تشغيل فلاش LED')}catch(e){proCameraSetStatus('تعذر تشغيل فلاش LED من الهاتف؛ تحقق من صلاحية الكاميرا والفلاش')}}
-async function proCameraFlip(){try{await CameraPreviewPlugin().flip()}catch{proCameraSetStatus('تعذر تبديل الكاميرا')}}
+async function proCameraFlip(){await proCameraStopLiveDetection();try{await CameraPreviewPlugin().flip();await proCameraStartLiveDetection()}catch{proCameraSetStatus('تعذر تبديل الكاميرا')}}
 
 async function proCameraTogglePerspective(){
  const e=document.getElementById('pc-corners'),b=document.getElementById('pc-perspective');

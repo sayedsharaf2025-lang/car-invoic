@@ -73,7 +73,7 @@ async function proCameraRender(){
 }
 async function proCameraRetake(){pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;pcEditingCorners=false;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}document.getElementById('pc-review').hidden=true;document.getElementById('pc-guide').hidden=false;document.getElementById('pc-live-tools').hidden=false;document.getElementById('pc-actions').hidden=false;document.getElementById('pc-edit-tools').hidden=true;document.getElementById('pc-review-actions').hidden=true;const editBtn=document.getElementById('pc-edit-detected');if(editBtn)editBtn.hidden=true;if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;try{await proCameraStart()}catch(e){proCameraSetStatus('تعذر إعادة تشغيل الكاميرا')}}
 async function proCameraRotate(){pcRotation=(pcRotation+90)%360;if(pcPerspective)pcCorners=pcCorners.map(([x,y])=>[1-y,x]);proCameraUpdateCorners();await proCameraRender()}
-async function proCameraToggleEnhance(){pcEnhance=!pcEnhance;if(pcEnhance){pcGray=false;pcBW=false}await proCameraRender()}
+async async function proCameraToggleEnhance(){pcEnhance=!pcEnhance;if(pcEnhance){pcGray=false;pcBW=false}await proCameraRender()}
 async function proCameraToggleGray(){pcGray=!pcGray;if(pcGray){pcEnhance=false;pcBW=false}await proCameraRender()}
 async function proCameraToggleBW(){pcBW=!pcBW;if(pcBW){pcEnhance=false;pcGray=false}await proCameraRender()}
 async function proCameraSetCrop(v){pcCrop=Number(v)||0;await proCameraRender()}

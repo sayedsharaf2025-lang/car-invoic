@@ -72,6 +72,7 @@ textarea{width:100%;font:inherit;padding:11px;border:1px solid var(--line);borde
 
 /* Live document boundary overlay */
 #pc-live-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+#pro-camera>.pc-top,#pro-camera>.pc-bottom,#pro-camera>.pc-hint{position:relative;z-index:2}
 /* Professional live document camera */
 body.cam-active{padding:0!important;background:transparent!important;overflow:hidden}
 body.cam-active #app{background:transparent!important;visibility:hidden}

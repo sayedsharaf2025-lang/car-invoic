@@ -26,7 +26,7 @@ function render(){
  if(!PROFILE){app.innerHTML=loadingHtml();return}
  if(PROFILE.status!=='approved'){app.innerHTML=viewPending();document.body.classList.add('out');return}
  if(tab==='settings'&&!isAdmin())tab='exp';
- if(tab!=='settings'&&!hasScreen(tab)){tab=SCREEN_LIST.find(x=>hasScreen(x[0]))?.[0]||'exp';ctx={}}
+ if(tab!=='settings'&&!hasScreen(tab)){const first=SCREEN_LIST.find(x=>hasScreen(x[0]));if(!first){app.innerHTML='<h1>لا توجد شاشات متاحة</h1><p class="empty">المدير لم يحدد لك صلاحيات مشاهدة الشاشات بعد.</p><button class="ghost wide" onclick="logout()">تسجيل الخروج</button>';document.querySelectorAll('nav button').forEach(b=>b.hidden=true);return}tab=first[0];ctx={}}
  app.innerHTML=window[VIEWS[tab]]?window[VIEWS[tab]]():'<p class="empty">الشاشة غير موجودة</p>';
  document.querySelectorAll('nav button').forEach(b=>{const k=b.dataset.t;b.hidden=k==='settings'?!isAdmin():!hasScreen(k);b.classList.toggle('on',k===GROUP[tab])});
  const key=tab+(ctx.id||'');if(key!==shownKey){shownKey=key;scrollTo(0,0)}
@@ -47,7 +47,7 @@ async function loadProfile(){
   if(isAdmin())SCREEN_KEYS=SCREEN_LIST.map(x=>x[0]);
  }
 }
-async function loadAll(){await loadProfile();if(PROFILE.status==='approved'){await Promise.all([loadExpenses(),loadCars()]);LOADED=true}render()}
+async function loadAll(){await loadProfile();if(PROFILE.status==='approved'){await Promise.all([loadExpenses(),loadCars()]);if(isAdmin()){const {data,error}=await sb.from('app_users').select('*').order('created_at',{ascending:false});if(error)throw error;USER_ROWS=data||[]}LOADED=true}render()}
 function start(){LOADED=false;PROFILE=null;WORKSPACE_ID=null;SCREEN_KEYS=[];render();run(loadAll)}
 function resetState(){LOADED=false;PROFILE=null;WORKSPACE_ID=null;SCREEN_KEYS=[];USER_ROWS=[];S={wallets:[],accounts:[],tx:[]};CARS=[];CDOCS={};URLS={}}
 function viewSettings(){

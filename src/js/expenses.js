@@ -144,6 +144,7 @@ function logHtml(){
   return h;
 }
 async function delTx(id){
+  const target=S.tx.find(t=>t.id===id);if(target&&target.debtAction!=='none')return toast('حركات السلف والسداد لا تُحذف من السجل حتى لا يختل رصيد المديونية');
   if(!confirm('حذف الحركة دي؟'))return;
   await run(async()=>{ck(await sb.from('transactions').delete().eq('id',id));await loadExpenses();renderLog()},'تم الحذف');
 }
@@ -255,11 +256,35 @@ async function importData(){
 
 
 function viewReport(){
+ if(F.reportType==='source')return viewSourceReport();
+ if(F.reportType==='debts')return viewDebtReport();
  const m=F.m||today().slice(0,7);
- return '<h1>التقارير الشهرية</h1><label>الشهر</label><input id="rm" type="month" value="'+esc(m)+'" onchange="F.m=this.value;renderReport()">'+
+ return '<h1>التقارير الشهرية</h1><div class="two"><button class="ghost" onclick="F.reportType=\'source\';render()">تقرير مصادر الأموال</button><button class="ghost" onclick="F.reportType=\'debts\';render()">تقرير المديونيات</button></div><label>الشهر</label><input id="rm" type="month" value="'+esc(m)+'" onchange="F.m=this.value;renderReport()">'+
  '<div class="two seg"><button class="ghost '+(!F.w?'on':'')+'" onclick="F.w=\'\';render()">تقرير الحساب</button><button class="ghost '+(F.w?'on':'')+'" onclick="F.w=\'all\';render()">تقرير المحفظة</button></div>'+
  '<label>'+(F.w?'المحفظة':'الحساب')+'</label><select id="rsel" onchange="F.'+(F.w?'w':'a')+'=this.value;renderReport()">'+(F.w?wOpts(F.w==='all'?'':F.w,'اختار المحفظة'):aOpts(F.a,'اختار الحساب'))+'</select><div id="reportBody">'+reportHtml(m)+'</div>';
 }
+
+function viewSourceReport(){
+ const from=F.from||today().slice(0,7)+'-01',to=F.to||today();
+ const rows=S.tx.filter(t=>t.k==='c'&&t.sourceId&&t.debtAction!=='repayment'&&t.d>=from&&t.d<=to&&(!F.source||t.sourceId===F.source));
+ const total=round2(rows.reduce((n,t)=>n+t.a,0));
+ const grouped={};rows.forEach(t=>{const s=S.sources.find(x=>x.id===t.sourceId);const name=s?s.name:(t.source||'مصدر غير محدد');grouped[name]=(grouped[name]||0)+t.a});
+ return `<h1>تقرير مصادر الأموال</h1><div class="two"><button class="ghost" onclick="F.reportType='';render()">التقارير الشهرية</button><button class="ghost" onclick="F.reportType='debts';render()">المديونيات</button></div>
+ <div class="two"><div><label>من تاريخ</label><input type="date" value="${esc(from)}" onchange="F.from=this.value;renderReport()"></div><div><label>إلى تاريخ</label><input type="date" value="${esc(to)}" onchange="F.to=this.value;renderReport()"></div></div>
+ <label>مصدر الأموال</label><select onchange="F.source=this.value;renderReport()">${sourceOpts(F.source,'كل المصادر')}</select>
+ <div class="total"><small>إجمالي الإيداعات من المصادر المحددة</small><b class="num">${fmt(total)} ج.م</b></div>
+ <h2>ملخص كل مصدر</h2>${Object.entries(grouped).map(([name,amount])=>`<div class="row"><b>${esc(name)}</b><b class="num pos">${fmt(amount)} ج.م</b></div>`).join('')||'<p class="empty">لا توجد إيداعات في الفترة.</p>'}
+ <h2>تفاصيل الإيداعات (${rows.length})</h2>${rows.sort((a,b)=>a.d.localeCompare(b.d)).map(t=>`<div class="row"><div>${esc(t.source||'إيداع')}<small>${esc(t.d)} · ${esc(wName(t.w))}${t.n?' · '+esc(t.n):''}</small></div><b class="num pos">+${fmt(t.a)}</b></div>`).join('')}`;
+}
+function viewDebtReport(){
+ const rows=S.debts,totalInitial=round2(rows.reduce((n,d)=>n+d.initial,0)),totalRemaining=round2(rows.reduce((n,d)=>n+d.remaining,0));
+ return `<h1>تقرير المديونيات والسلف</h1><div class="two"><button class="ghost" onclick="F.reportType='';render()">التقارير الشهرية</button><button class="ghost" onclick="F.reportType='source';render()">مصادر الأموال</button></div>
+ <div class="total"><small>إجمالي المبالغ المستحقة</small><b class="num">${fmt(totalRemaining)} ج.م</b></div>
+ <p class="muted">إجمالي السلف المسجلة: ${fmt(totalInitial)} ج.م</p>
+ ${rows.map(d=>{const repaid=round2(d.initial-d.remaining),payments=S.tx.filter(t=>t.debtId===d.id&&t.debtAction==='repayment');return `<div class="card-item"><b>${esc(d.person)}</b><div class="kv"><span>أصل السلفة</span><b class="num">${fmt(d.initial)}</b></div><div class="kv"><span>المسدد</span><b class="num pos">${fmt(repaid)}</b></div><div class="kv"><span>المتبقي عليه</span><b class="num ${d.remaining?'neg':'pos'}">${fmt(d.remaining)}</b></div><small>${esc(d.date)} · ${esc(d.note||'')}</small><h3>دفعات السداد</h3>${payments.map(p=>`<div class="kv"><span>${esc(p.d)}</span><b class="num pos">${fmt(p.a)}</b></div>`).join('')||'<small>لم يتم السداد بعد</small>'}<button class="ghost wide" onclick="repayDebtQuick('${d.id}')">تسجيل سداد</button></div>`}).join('')||'<p class="empty">لا توجد مديونيات مسجلة.</p>'}`;
+}
+function repayDebtQuick(id){go('add');setTimeout(()=>{setKind('c');setDepositMode('repay');const el=$('#repayDebt');if(el)el.value=id},0)}
+
 function renderReport(){const m=$('#rm')?$('#rm').value:F.m||today().slice(0,7);F.m=m;const el=$('#reportBody');if(el)el.innerHTML=reportHtml(m)}
 function reportMonthEnd(m){const y=Number(m.slice(0,4)),mo=Number(m.slice(5,7)),d=new Date(y,mo,0).getDate();return m+'-'+String(d).padStart(2,'0')}
 function reportHtml(m){
@@ -286,7 +311,7 @@ function printReport(){window.print()}
 
 /* ---------- safe transaction editing ---------- */
 function editTx(id){
-  const t=S.tx.find(x=>x.id===id);if(!t)return toast('الحركة غير موجودة');
+  const t=S.tx.find(x=>x.id===id);if(!t)return toast('الحركة غير موجودة');if(t.debtAction!=='none')return toast('حركات السلف والسداد لا تُعدل من السجل');
   modal('<h2>تعديل الحركة المالية</h2>'+
     '<label>نوع الحركة</label><select id="etk" onchange="toggleEditKind()">'+opts([['d','صرف'],['c','قبض / إيداع'],['t','تحويل بين المحافظ']],t.k)+'</select>'+
     '<label>من محفظة</label><select id="etw">'+wOpts(t.w)+'</select>'+

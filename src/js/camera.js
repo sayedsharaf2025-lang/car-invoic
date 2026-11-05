@@ -54,7 +54,7 @@ async function proCameraRender(){
  let ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});
  ctx.save();ctx.translate(w/2,h/2);ctx.rotate(rot*Math.PI/180);ctx.drawImage(im,-im.width/2,-im.height/2);ctx.restore();
  if(pcPerspective&&!pcEditingCorners){const warped=pcPerspectiveCanvas(work);work.width=warped.width;work.height=warped.height;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(warped,0,0)}
- if(pcCrop){const cut=Math.round(Math.min(w,h)*pcCrop/100),cw=Math.max(1,w-2*cut),ch=Math.max(1,h-2*cut),tmp=document.createElement('canvas');tmp.width=cw;tmp.height=ch;tmp.getContext('2d').drawImage(work,cut,cut,cw,ch,0,0,cw,ch);work.width=cw;work.height=ch;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
+ if(pcCrop){const cut=Math.round(Math.min(work.width,work.height)*pcCrop/100),cw=Math.max(1,work.width-2*cut),ch=Math.max(1,work.height-2*cut),tmp=document.createElement('canvas');tmp.width=cw;tmp.height=ch;tmp.getContext('2d').drawImage(work,cut,cut,cw,ch,0,0,cw,ch);work.width=cw;work.height=ch;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
  if(Math.max(work.width,work.height)>2800){const scale=2800/Math.max(work.width,work.height),nw=Math.max(1,Math.round(work.width*scale)),nh=Math.max(1,Math.round(work.height*scale)),tmp=document.createElement('canvas');tmp.width=nw;tmp.height=nh;tmp.getContext('2d',{alpha:false}).drawImage(work,0,0,nw,nh);work.width=nw;work.height=nh;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
  const iw=work.width,ih=work.height;
  if(pcEnhance||pcGray){

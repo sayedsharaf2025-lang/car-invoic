@@ -57,13 +57,10 @@ async function proCameraRender(){
  if(pcPerspective){const warped=pcPerspectiveCanvas(work);work.width=warped.width;work.height=warped.height;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(warped,0,0)}
  const iw=work.width,ih=work.height;
  if(pcEnhance||pcGray){
-  const frame=ctx.getImageData(0,0,iw,ih),src=frame.data;
-  if(pcEnhance){
-   const blur=document.createElement('canvas');blur.width=iw;blur.height=ih;const bc=blur.getContext('2d');bc.filter='blur(1.15px)';bc.drawImage(work,0,0);
-   const soft=bc.getImageData(0,0,iw,ih).data;
-   for(let i=0;i<src.length;i+=4){for(let k=0;k<3;k++){const v=src[i+k],detail=v-soft[i+k];src[i+k]=Math.max(0,Math.min(255,(v-128)*1.045+128+detail*.32))}}
-  }
-  if(pcGray){for(let i=0;i<src.length;i+=4){const lum=.2126*src[i]+.7152*src[i+1]+.0722*src[i+2];src[i]=src[i+1]=src[i+2]=lum}}
+  const scanner=window.DocumentScanner;
+  if(!scanner||typeof scanner.enhance!=='function')throw Error('محرك تحسين المستند غير محمل');
+  const frame=ctx.getImageData(0,0,iw,ih),mode=pcGray?'gray':(pcEnhance?'magic':'original');
+  frame.data.set(scanner.enhance(frame.data,iw,ih,mode));
   ctx.putImageData(frame,0,0);
  }
  const c=document.getElementById('pc-canvas');c.width=iw;c.height=ih;c.getContext('2d',{alpha:false}).drawImage(work,0,0);
@@ -124,51 +121,43 @@ function pcDetectDocumentCorners(canvas){
 }
 async function proCameraAutoDetect(){
  if(!pcOriginal)return false;
- const lib=window.Scanic;
- if(!lib||typeof lib.scanDocument!=='function'){proCameraSetStatus('مكتبة اكتشاف المستند غير محملة؛ الصورة الأصلية محفوظة.');return false}
- proCameraSetStatus('جارٍ اكتشاف حدود الورقة وتصحيح الميل والمنظور تلقائيًا…');
+ const scanner=window.DocumentScanner;
+ if(!scanner||typeof scanner.detectDocument!=='function'){proCameraSetStatus('محرك اكتشاف المستند غير محمل');return false}
+ proCameraSetStatus('جارٍ اكتشاف حدود الورقة…');
  try{
-  // A single Scanic extraction call performs both edge detection and perspective correction.
-  const result=await lib.scanDocument(pcOriginal,{mode:'extract',output:'canvas',maxProcessingDimension:1200});
-  if(!result||!result.success||!result.output||!result.corners){
-   pcScanResult=null;pcDetectedCorners=null;
-   proCameraSetStatus('لم تتضح حدود الورقة. تأكد من ظهور الورقة كاملة وبإضاءة جيدة، ويمكنك تعديل الأركان يدويًا.');
-   return false;
+  const maxSide=1400,scale=Math.min(1,maxSide/Math.max(pcOriginal.width,pcOriginal.height));
+  const sw=Math.max(2,Math.round(pcOriginal.width*scale)),sh=Math.max(2,Math.round(pcOriginal.height*scale));
+  const sample=document.createElement('canvas');sample.width=sw;sample.height=sh;
+  const sc=sample.getContext('2d',{willReadFrequently:true});sc.drawImage(pcOriginal,0,0,sw,sh);
+  const found=scanner.detectDocument(sc.getImageData(0,0,sw,sh).data,sw,sh);
+  pcScanResult=null;pcDetectedCorners=found;
+  if(found&&found.length===4){
+   pcCorners=found.map(p=>[Math.max(0,Math.min(1,p.x/sw)),Math.max(0,Math.min(1,p.y/sh))]);
+   pcPerspective=true;
+   proCameraSetStatus('تم اكتشاف حدود الورقة. يمكنك سحب الزوايا الأربع لتعديل القص قبل الحفظ.');
+  }else{
+   pcCorners=[[0,0],[1,0],[1,1],[0,1]];pcPerspective=true;
+   proCameraSetStatus('لم يتم تحديد حدود الورقة بدقة؛ الصورة كاملة محفوظة. اسحب الزوايا الأربع يدويًا.');
   }
-  pcScanResult=result.output;pcDetectedCorners=result.corners;
-  const edit=document.getElementById('pc-edit-detected');if(edit)edit.hidden=false;
-  await proCameraRender();
-  proCameraSetStatus('تمت محاذاة الورقة وتصحيح المنظور تلقائيًا. راجع النتيجة أو عدّل الأركان عند الحاجة.');
-  return true;
+  const edit=document.getElementById('pc-edit-detected');if(edit){edit.hidden=false;edit.textContent='تعديل الأركان يدويًا'}
+  const perspective=document.getElementById('pc-perspective');if(perspective)perspective.classList.add('selected');
+  const overlay=document.getElementById('pc-corners');if(overlay)overlay.style.display='block';
+  await proCameraRender();proCameraUpdateCorners();
+  return !!found;
  }catch(e){
-  pcScanResult=null;pcDetectedCorners=null;
-  proCameraSetStatus('تعذر التصحيح التلقائي: '+(e.message||'خطأ'));
-  await proCameraRender();
+  pcScanResult=null;pcDetectedCorners=null;pcCorners=[[0,0],[1,0],[1,1],[0,1]];pcPerspective=true;
+  const edit=document.getElementById('pc-edit-detected');if(edit)edit.hidden=false;
+  try{await proCameraRender()}catch{}
+  proCameraSetStatus('تعذر الاكتشاف التلقائي؛ يمكنك تحديد الزوايا يدويًا. '+(e.message||''));
   return false;
  }
 }
 function proCameraEditDetectedCorners(){
- const lib=window.Scanic,host=document.getElementById('pc-scan-editor'),canvas=document.getElementById('pc-canvas');
- if(!lib||!lib.createCornerEditor||!lib.extractDocument||!pcOriginal||!pcDetectedCorners||!host||!canvas)return proCameraSetStatus('محرر الأركان غير متاح حاليًا');
- if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}
- canvas.style.visibility='hidden';host.style.display='block';host.innerHTML='';
- try{
-  pcCornerEditor=lib.createCornerEditor({container:host,image:pcOriginal,corners:pcDetectedCorners,magnifier:{zoom:2,size:110},nudges:{enabled:true,steps:[1,5]},onConfirm:async corners=>{
-   try{
-    proCameraSetStatus('جارٍ تطبيق الأركان المعدلة…');
-    const result=await lib.extractDocument(pcOriginal,corners,{output:'canvas'});
-    if(!result||!result.success||!result.output)throw Error('فشل قص المستند');
-    pcScanResult=result.output;pcDetectedCorners=corners;
-    if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}
-    host.style.display='none';host.innerHTML='';canvas.style.visibility='';
-    await proCameraRender();proCameraSetStatus('تم تطبيق المحاذاة اليدوية بنجاح');
-   }catch(e){proCameraSetStatus('تعذر تطبيق الأركان: '+e.message)}
-  },onCancel:()=>{
-   if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}
-   host.style.display='none';host.innerHTML='';canvas.style.visibility='';
-  }});
- }catch(e){host.style.display='none';canvas.style.visibility='';proCameraSetStatus('تعذر فتح محرر الأركان: '+e.message)}
+ pcPerspective=true;
+ const overlay=document.getElementById('pc-corners'),button=document.getElementById('pc-perspective');
+ if(overlay)overlay.style.display='block';
+ if(button)button.classList.add('selected');
+ proCameraUpdateCorners();
+ proCameraSetStatus('اسحب الدوائر الأربع إلى حواف الورقة. سيُعاد تصحيح المنظور تلقائيًا.');
 }
-
-
-// Scanic corner editor is positioned over the review canvas.
+// The four draggable crop handles are positioned over the review canvas.

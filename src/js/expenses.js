@@ -88,7 +88,7 @@ function viewAdd(){
  <div id="expenseAccountBox"><label>الحساب / بند المصروف</label><select id="fa">${aOpts('')}</select></div>
  <div id="debtPersonBox" hidden><label>اسم الشخص المستلف</label><input id="debtPerson" maxlength="120" placeholder="اسم الشخص"><label>ملاحظة السلفة</label><input id="debtNote" maxlength="300" placeholder="سبب أو تفاصيل السلفة"></div></div>
  <div id="depositBox" hidden><label>نوع الإيداع</label><select id="depositMode" onchange="setDepositMode(this.value)"><option value="income">إيراد جديد</option><option value="repay">استرداد سلفة / سداد مديونية</option></select>
- <div id="incomeSourceBox"><label>خدت الفلوس منين؟ / مصدر الأموال</label><select id="sourceId">${sourceOpts('','اختار مصدر الأموال')}</select><button type="button" class="ghost wide" onclick="sourceModal()">+ إضافة مصدر جديد</button></div>
+ <div id="incomeSourceBox"><label>خدت الفلوس منين؟ / مصدر الأموال</label><select id="sourceId">${sourceOpts('','اختار مصدر الأموال')}</select><button type="button" class="ghost wide" onclick="sourceModal()">+ إضافة مصدر جديد</button><label>تضيف المبلغ لأي حساب؟ (اختياري)</label><select id="depositAccount">${aOpts('','بدون ربط بحساب')}</select></div>
  <div id="repayDebtBox" hidden><label>مين اللي رجّع الفلوس؟</label><select id="repayDebt">${debtOpts('','اختار المديونية')}</select></div></div>
  <label>المبلغ</label><input id="am" type="text" inputmode="decimal" dir="ltr" placeholder="0.00"><label>التاريخ</label><input id="dt" type="date" value="${today()}">
  <label>ملاحظة / بيان</label><div class="inrow"><input id="nt" maxlength="120" placeholder="اكتب أو اتكلم"><button id="mic" class="mic" type="button" onclick="dictate()" aria-label="إدخال صوتي">🎤</button></div>
@@ -115,7 +115,7 @@ async function saveTx(){
   if(transferMode){const to_wallet_id=$('#tw').value;if(!to_wallet_id||to_wallet_id===wallet_id)throw new Error('اختار محفظتين مختلفتين');ck(await sb.from('transactions').insert({wallet_id,to_wallet_id,account_id:null,kind:'t',amount:round2(amount),tx_date,note,source:'تحويل داخلي'}))}
   else if(kind==='c'){
    if(depositMode==='repay'){const debt_id=$('#repayDebt').value;if(!debt_id)throw new Error('اختار المديونية اللي اتسددت');const debt=S.debts.find(d=>d.id===debt_id);if(!debt||amount>debt.remaining+0.005)throw new Error('مبلغ السداد أكبر من المتبقي على الشخص');ck(await sb.from('transactions').insert({wallet_id,account_id:null,kind:'c',amount:round2(amount),tx_date,note,source:'سداد مديونية: '+debt.person,debt_id,debt_action:'repayment'}))}
-   else{const source_id=$('#sourceId').value;if(!source_id)throw new Error('اختار مصدر الأموال');const source=S.sources.find(x=>x.id===source_id);ck(await sb.from('transactions').insert({wallet_id,account_id:null,kind:'c',amount:round2(amount),tx_date,note,source:source?.name||'',source_id,debt_action:'none'}))}
+   else{const source_id=$('#sourceId').value,account_id=$('#depositAccount').value||null;if(!source_id)throw new Error('اختار مصدر الأموال');const source=S.sources.find(x=>x.id===source_id);ck(await sb.from('transactions').insert({wallet_id,account_id,kind:'c',amount:round2(amount),tx_date,note,source:source?.name||'',source_id,debt_action:'none'}))}
   }else if(withdrawalMode==='debt'){
    const person=$('#debtPerson').value.trim(),debtNote=$('#debtNote').value.trim().slice(0,300);if(!person)throw new Error('اكتب اسم الشخص المستلف');const d=ck(await sb.from('debts').insert({person_name:person,initial_amount:round2(amount),debt_date:tx_date,note:debtNote}).select().single());
    try{ck(await sb.from('transactions').insert({wallet_id,account_id:null,kind:'d',amount:round2(amount),tx_date,note:note||debtNote,source:'سلفة إلى '+person,debt_id:d.data.id,debt_action:'issued'}))}catch(e){await sb.from('debts').delete().eq('id',d.data.id);throw e}
@@ -207,10 +207,10 @@ async function delAccount(id){
 /* ---------- backup & restore ---------- */
 async function exportData(){
   await run(async()=>{
-    const data={app:'cashbook',version:2,exported_at:new Date().toISOString(),
+    const data={app:'cashbook',version:3,exported_at:new Date().toISOString(),
       wallets:S.wallets.map(w=>({name:w.name,type:w.type,opening_balance:w.opening})),
-      accounts:S.accounts.map(a=>a.name),
-      transactions:S.tx.map(t=>({wallet:S.wallets.findIndex(w=>w.id===t.w),to_wallet:S.wallets.findIndex(w=>w.id===t.to),account:t.ac?aName(t.ac):'',kind:t.k,amount:t.a,date:t.d,note:t.n,source:t.source||'',adjustment:t.adj}))};
+      accounts:S.accounts.map(a=>a.name),sources:S.sources.map(s=>({name:s.name,type:s.type,active:s.active})),
+      transactions:S.tx.map(t=>({wallet:S.wallets.findIndex(w=>w.id===t.w),to_wallet:S.wallets.findIndex(w=>w.id===t.to),account:t.ac?aName(t.ac):'',kind:t.k,amount:t.a,date:t.d,note:t.n,source:t.source||'',source_name:(S.sources.find(s=>s.id===t.sourceId)||{}).name||'',debt_action:t.debtAction,debt_person:(S.debts.find(d=>d.id===t.debtId)||{}).person||'',adjustment:t.adj}))};
     const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
     await shareFile(blob,`cashbook-backup-${today()}.json`,'نسخة احتياطية - دفتر النقدية');
   });
@@ -269,7 +269,7 @@ function viewReport(){
 
 function viewSourceReport(){
  const from=F.from||today().slice(0,7)+'-01',to=F.to||today();
- const rows=S.tx.filter(t=>t.k==='c'&&(t.sourceId||t.source)&&t.debtAction!=='repayment'&&t.d>=from&&t.d<=to&&(!F.source||t.sourceId===F.source));
+ const selectedSource=S.sources.find(s=>s.id===F.source);const rows=S.tx.filter(t=>t.k==='c'&&(t.sourceId||t.source)&&t.debtAction!=='repayment'&&t.d>=from&&t.d<=to&&(!F.source||t.sourceId===F.source||(!t.sourceId&&selectedSource&&t.source===selectedSource.name)));
  const total=round2(rows.reduce((n,t)=>n+t.a,0));
  const grouped={};rows.forEach(t=>{const s=S.sources.find(x=>x.id===t.sourceId);const name=s?s.name:(t.source||'مصدر غير محدد');grouped[name]=(grouped[name]||0)+t.a});
  return `<h1>تقرير مصادر الأموال</h1><div class="two"><button class="ghost" onclick="F.reportType='';render()">التقارير الشهرية</button><button class="ghost" onclick="F.reportType='debts';render()">المديونيات</button></div>
@@ -314,15 +314,17 @@ function printReport(){window.print()}
 
 /* ---------- safe transaction editing ---------- */
 function editTx(id){
-  const t=S.tx.find(x=>x.id===id);if(!t)return toast('الحركة غير موجودة');if(t.debtAction!=='none')return toast('حركات السلف والسداد لا تُعدل من السجل');
+  const t=S.tx.find(x=>x.id===id);if(!t)return toast('الحركة غير موجودة');if(t.debtAction!=='none'||t.adj)return toast('حركات السلف والتسويات محمية من التعديل المباشر');
+  const matchedSource=t.sourceId||((S.sources.find(s=>s.name===t.source)||{}).id)||'';
   modal('<h2>تعديل الحركة المالية</h2>'+
     '<label>نوع الحركة</label><select id="etk" onchange="toggleEditKind()">'+opts([['d','صرف'],['c','قبض / إيداع'],['t','تحويل بين المحافظ']],t.k)+'</select>'+
     '<label>من محفظة</label><select id="etw">'+wOpts(t.w)+'</select>'+
     '<div id="editToBox" '+(t.k==='t'?'':'hidden')+'><label>إلى محفظة</label><select id="etto">'+wOpts(t.to||'')+'</select></div>'+
-    '<div id="editAccountBox" '+(t.k==='t'?'hidden':'')+'><label>الحساب / البند</label><select id="eta">'+aOpts(t.ac||'')+'</select></div>'+
+    '<div id="editAccountBox" '+(t.k==='t'?'hidden':'')+'><label>الحساب / البند (اختياري للقبض)</label><select id="eta">'+aOpts(t.ac||'','بدون حساب')}</select></div>'+
     '<label>المبلغ</label><input id="etam" type="text" inputmode="decimal" dir="ltr" value="'+fmt(t.a)+'">'+
     '<label>التاريخ</label><input id="etd" type="date" value="'+esc(t.d)+'">'+
-    '<label>مصدر الأموال / الجهة</label><input id="ets" maxlength="120" value="'+esc(t.source||'')+'">'+
+    '<label>مصدر الأموال (للقبض)</label><select id="etSourceId">'+sourceOpts(matchedSource,'بدون مصدر مرتبط')+'</select>'+
+    '<label>جهة / بيان إضافي</label><input id="ets" maxlength="120" value="'+esc(t.source||'')+'">'+
     '<label>البيان</label><input id="etn" maxlength="120" value="'+esc(t.n||'')+'">'+
     '<button class="go" onclick="saveEditTx(\''+id+'\')">حفظ التعديلات</button>');
 }
@@ -330,15 +332,17 @@ function toggleEditKind(){
  const transfer=$('#etk').value==='t';$('#editToBox').hidden=!transfer;$('#editAccountBox').hidden=transfer;
 }
 async function saveEditTx(id){
- const k=$('#etk').value,wallet_id=$('#etw').value,to_wallet_id=k==='t'?$('#etto').value:null,account_id=k==='t'?null:$('#eta').value;
- const amount=Number(num($('#etam').value)),tx_date=$('#etd').value,source=$('#ets').value.trim().slice(0,120),note=$('#etn').value.trim().slice(0,120);
+ const k=$('#etk').value,wallet_id=$('#etw').value,to_wallet_id=k==='t'?$('#etto').value:null;
+ const account_id=k==='t'?null:($('#eta').value||null),amount=Number(num($('#etam').value)),tx_date=$('#etd').value;
+ const sourceId=k==='c'?($('#etSourceId')?.value||null):null,manualSource=$('#ets').value.trim().slice(0,120);
+ const source=sourceId?(S.sources.find(s=>s.id===sourceId)?.name||manualSource):manualSource,note=$('#etn').value.trim().slice(0,120);
  if(!['d','c','t'].includes(k))return toast('نوع الحركة غير صحيح');
  if(!(Number.isFinite(amount)&&amount>0))return toast('اكتب مبلغ صحيح أكبر من صفر');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(tx_date))return toast('اختار تاريخ صحيح');
  if(k==='t'&&(!to_wallet_id||to_wallet_id===wallet_id))return toast('اختار محفظتين مختلفتين');
- if(k!=='t'&&!account_id)return toast('اختار الحساب');
+ if(k==='d'&&!account_id)return toast('اختار الحساب أو بند المصروف');
  await run(async()=>{
-   ck(await sb.from('transactions').update({wallet_id,to_wallet_id,account_id,kind:k,amount:round2(amount),tx_date,note,source}).eq('id',id));
+   ck(await sb.from('transactions').update({wallet_id,to_wallet_id,account_id,kind:k,amount:round2(amount),tx_date,note,source,source_id:sourceId}).eq('id',id));
    await loadExpenses();renderLog();
  },'تم تعديل الحركة');
 }

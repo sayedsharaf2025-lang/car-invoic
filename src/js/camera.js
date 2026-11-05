@@ -123,21 +123,29 @@ function pcDetectDocumentCorners(canvas){
  return winner.corners.map(v=>[v[0],v[1]]);
 }
 async function proCameraAutoDetect(){
- if(!pcOriginal)return;
+ if(!pcOriginal)return false;
  const lib=window.Scanic;
- if(!lib||typeof lib.scanDocument!=='function'){proCameraSetStatus('مكتبة اكتشاف المستند غير محملة؛ الصورة الأصلية محفوظة.');return}
- proCameraSetStatus('جارٍ البحث عن الأركان الأربعة وتصحيح المنظور…');
+ if(!lib||typeof lib.scanDocument!=='function'){proCameraSetStatus('مكتبة اكتشاف المستند غير محملة؛ الصورة الأصلية محفوظة.');return false}
+ proCameraSetStatus('جارٍ اكتشاف حدود الورقة وتصحيح الميل والمنظور تلقائيًا…');
  try{
-  const detection=await lib.scanDocument(pcOriginal,{mode:'detect',maxProcessingDimension:1000});
-  if(!detection||!detection.success||!detection.corners){pcDetectedCorners=null;proCameraSetStatus('لم يتم العثور على أركان واضحة. يمكنك استخدام الصورة الأصلية.');return}
-  pcDetectedCorners=detection.corners;
-  const extracted=await lib.scanDocument(pcOriginal,{mode:'extract',output:'canvas',maxProcessingDimension:1000});
-  if(!extracted||!extracted.success||!extracted.output)throw Error('لم ينجح تصحيح المنظور');
-  pcScanResult=extracted.output;
+  // A single Scanic extraction call performs both edge detection and perspective correction.
+  const result=await lib.scanDocument(pcOriginal,{mode:'extract',output:'canvas',maxProcessingDimension:1200});
+  if(!result||!result.success||!result.output||!result.corners){
+   pcScanResult=null;pcDetectedCorners=null;
+   proCameraSetStatus('لم تتضح حدود الورقة. تأكد من ظهور الورقة كاملة وبإضاءة جيدة، ويمكنك تعديل الأركان يدويًا.');
+   return false;
+  }
+  pcScanResult=result.output;pcDetectedCorners=result.corners;
   const edit=document.getElementById('pc-edit-detected');if(edit)edit.hidden=false;
   await proCameraRender();
-  proCameraSetStatus('تم اكتشاف الأركان الأربعة وتصحيح الصورة تلقائيًا.');
- }catch(e){pcScanResult=null;proCameraSetStatus('تعذر التصحيح التلقائي: '+(e.message||'خطأ'));await proCameraRender()}
+  proCameraSetStatus('تمت محاذاة الورقة وتصحيح المنظور تلقائيًا. راجع النتيجة أو عدّل الأركان عند الحاجة.');
+  return true;
+ }catch(e){
+  pcScanResult=null;pcDetectedCorners=null;
+  proCameraSetStatus('تعذر التصحيح التلقائي: '+(e.message||'خطأ'));
+  await proCameraRender();
+  return false;
+ }
 }
 function proCameraEditDetectedCorners(){
  const lib=window.Scanic,host=document.getElementById('pc-scan-editor'),canvas=document.getElementById('pc-canvas');
@@ -145,12 +153,22 @@ function proCameraEditDetectedCorners(){
  if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}
  canvas.style.visibility='hidden';host.style.display='block';host.innerHTML='';
  try{
-  pcCornerEditor=lib.createCornerEditor({container:host,image:pcOriginal,corners:pcDetectedCorners,magnifier:{enabled:true,zoom:2,size:110},nudges:{enabled:true,steps:[1,5]},onConfirm:async corners=>{
-   try{proCameraSetStatus('جارٍ تطبيق الأركان المعدلة…');const result=await lib.extractDocument(pcOriginal,corners,{output:'canvas'});if(!result||!result.success||!result.output)throw Error('فشل قص المستند');pcScanResult=result.output;pcDetectedCorners=corners;
-    if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}host.style.display='none';host.innerHTML='';canvas.style.visibility='';await proCameraRender();proCameraSetStatus('تم تطبيق المحاذاة اليدوية بنجاح');
+  pcCornerEditor=lib.createCornerEditor({container:host,image:pcOriginal,corners:pcDetectedCorners,magnifier:{zoom:2,size:110},nudges:{enabled:true,steps:[1,5]},onConfirm:async corners=>{
+   try{
+    proCameraSetStatus('جارٍ تطبيق الأركان المعدلة…');
+    const result=await lib.extractDocument(pcOriginal,corners,{output:'canvas'});
+    if(!result||!result.success||!result.output)throw Error('فشل قص المستند');
+    pcScanResult=result.output;pcDetectedCorners=corners;
+    if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}
+    host.style.display='none';host.innerHTML='';canvas.style.visibility='';
+    await proCameraRender();proCameraSetStatus('تم تطبيق المحاذاة اليدوية بنجاح');
    }catch(e){proCameraSetStatus('تعذر تطبيق الأركان: '+e.message)}
-  },onCancel:()=>{if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}host.style.display='none';host.innerHTML='';canvas.style.visibility=''}});
+  },onCancel:()=>{
+   if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}
+   host.style.display='none';host.innerHTML='';canvas.style.visibility='';
+  }});
  }catch(e){host.style.display='none';canvas.style.visibility='';proCameraSetStatus('تعذر فتح محرر الأركان: '+e.message)}
 }
+
 
 // Scanic corner editor is positioned over the review canvas.

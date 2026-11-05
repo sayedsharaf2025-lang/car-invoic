@@ -1,4 +1,4 @@
-import { scanDocument, createCornerEditor, extractDocument } from 'scanic';
+import * as DocumentScanner from './document-scanner.ts';
 import imageCompression from 'browser-image-compression';
-window.Scanic = { scanDocument, createCornerEditor, extractDocument };
+window.DocumentScanner = DocumentScanner;
 window.imageCompression = imageCompression;

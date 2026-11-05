@@ -40,10 +40,13 @@ export function otsu(gray:Uint8Array):number{
  for(let t=0;t<256;t++){wb+=hist[t];if(!wb)continue;const wf=total-wb;if(!wf)break;sb+=t*hist[t];const d=sb/wb-(sum-sb)/wf,score=wb*wf*d*d;if(score>best){best=score;tBest=t}}
  return tBest;
 }
-function shrinkGray(rgba:Uint8ClampedArray,w:number,h:number,maxSide:number){
- const s=Math.min(1,maxSide/Math.max(w,h)),sw=Math.max(2,Math.round(w*s)),sh=Math.max(2,Math.round(h*s)),gray=toGray(rgba,w*h),out=new Uint8Array(sw*sh);
- for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){const x0=Math.floor(x*w/sw),x1=Math.max(x0+1,Math.floor((x+1)*w/sw)),y0=Math.floor(y*h/sh),y1=Math.max(y0+1,Math.floor((y+1)*h/sh));let sum=0,n=0;for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++){sum+=gray[yy*w+xx];n++}out[y*sw+x]=sum/n}
- return{gray:out,sw,sh,s};
+function shrinkPlanes(rgba:Uint8ClampedArray,w:number,h:number,maxSide:number){
+ const scale=Math.min(1,maxSide/Math.max(w,h)),sw=Math.max(1,Math.round(w*scale)),sh=Math.max(1,Math.round(h*scale));
+ const gray=toGray(rgba,w*h),chroma=new Uint8Array(w*h);
+ for(let i=0;i<w*h;i++){const r=rgba[i*4],g=rgba[i*4+1],b=rgba[i*4+2];chroma[i]=Math.max(r,g,b)-Math.min(r,g,b)}
+ const og=new Uint8Array(sw*sh),oc=new Uint8Array(sw*sh);
+ for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){const x0=Math.floor(x*w/sw),x1=Math.max(x0+1,Math.floor((x+1)*w/sw)),y0=Math.floor(y*h/sh),y1=Math.max(y0+1,Math.floor((y+1)*h/sh));let sg=0,sc=0,n=0;for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++){const i=yy*w+xx;sg+=gray[i];sc+=chroma[i];n++}og[y*sw+x]=sg/n;oc[y*sw+x]=sc/n}
+ return{gray:og,chroma:oc,sw,sh,s:scale};
 }
 function biggestBlob(fg:Uint8Array,w:number,h:number){
  const seen=new Uint8Array(w*h),queue=new Int32Array(w*h);let best:number[]|null=null;
@@ -93,15 +96,19 @@ function candidate(fg:Uint8Array,w:number,h:number){
  let q:Quad;try{q=orderQuad(raw)}catch{return null}
  q=q.map(p=>({x:clamp(p.x,0,w-1),y:clamp(p.y,0,h-1)})) as Quad;
  const qa=areaPoly(q),solidity=area/ha,minSide=Math.min(dist(q[0],q[1]),dist(q[1],q[2]),dist(q[2],q[3]),dist(q[3],q[0]));
- if(solidity<.78||qa/ha>1.25||!isValidQuad(q)||minSide<.1*Math.min(w,h))return null;
- return{score:solidity-.3*Math.max(0,qa/ha-1)+.1*frac,area,quad:q};
+ if(solidity<.8||qa/ha>1.2||!isValidQuad(q)||minSide<.1*Math.min(w,h))return null;
+ let onBorder=0;for(let x=0;x<w;x++)onBorder+=b.mask[x]+b.mask[(h-1)*w+x];for(let y=0;y<h;y++)onBorder+=b.mask[y*w]+b.mask[y*w+w-1];
+ const borderCover=onBorder/(2*(w+h));
+ return{score:solidity-.3*Math.max(0,qa/ha-1)+.1*frac-.4*borderCover,area,quad:q};
 }
 export function detectDocument(rgba:Uint8ClampedArray,w:number,h:number):Quad|null{
  if(w<2||h<2||rgba.length<w*h*4)return null;
- const {gray,sw,sh,s}=shrinkGray(rgba,w,h,420),soft=boxBlur(gray,sw,sh,2),g=new Uint8Array(sw*sh);for(let i=0;i<g.length;i++)g[i]=soft[i];
- const t=otsu(g);let best:ReturnType<typeof candidate>=null;
- for(const threshold of [t,t-24,t+24]){if(threshold<5||threshold>250)continue;for(const light of [true,false]){const fg=new Uint8Array(g.length);for(let i=0;i<g.length;i++)fg[i]=light?+(g[i]>threshold):+(g[i]<=threshold);const c=candidate(fg,sw,sh);if(c&&(!best||c.score>best.score+.015||(Math.abs(c.score-best.score)<=.015&&c.area>best.area)))best=c}}
- return best?best.quad.map(p=>({x:p.x/s,y:p.y/s})) as Quad:null;
+ const{gray,chroma,sw,sh,s}=shrinkPlanes(rgba,w,h,300),paper=new Uint8Array(sw*sh);
+ for(let i=0;i<paper.length;i++)paper[i]=Math.max(0,Math.min(255,gray[i]-1.5*chroma[i]));
+ let best:ReturnType<typeof candidate>=null;
+ const consider=(plane:Uint8Array,t:number,light:boolean)=>{const fg=new Uint8Array(sw*sh);for(let i=0;i<fg.length;i++)fg[i]=light?+(plane[i]>t):+(plane[i]<=t);const c=candidate(fg,sw,sh);if(c&&(!best||c.score>best.score+.02||(Math.abs(c.score-best.score)<=.02&&c.area>best.area)))best=c};
+ for(const[plane,both]of [[gray,true],[paper,false]] as const){const soft=boxBlur(plane,sw,sh,2),g=new Uint8Array(sw*sh);for(let i=0;i<g.length;i++)g[i]=soft[i];const ts=new Set<number>([otsu(g)]);for(let t=96;t<=240;t+=16)ts.add(t);for(const t of ts){consider(g,t,true);if(both)consider(g,t,false)}}
+ return best?(best.quad.map(p=>({x:p.x/s,y:p.y/s})) as Quad):null;
 }
 export function homography(src:Quad,dst:Quad):number[]{
  const a:number[][]=[];for(let i=0;i<4;i++){const{x,y}=src[i],{x:u,y:v}=dst[i];a.push([x,y,1,0,0,0,-u*x,-u*y,u],[0,0,0,x,y,1,-v*x,-v*y,v])}

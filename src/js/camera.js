@@ -41,7 +41,7 @@ async function proCameraCapture(){
  try{proCameraSetStatus('جارٍ التقاط الصورة الأصلية…');const cp=CameraPreviewPlugin(),r=await cp.capture({quality:100});const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');if(!raw)throw Error('لم يتم التقاط صورة');
  const blob=b64ToBlob(raw,'image/jpeg');pcOriginal=await proCameraLoadImage(blob);pcScanResult=null;pcDetectedCorners=null;pcRotation=0;pcEnhance=true;pcGray=false;pcCrop=0;pcPerspective=false;pcEditingCorners=false;pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]];await proCameraStop();
  document.getElementById('pc-review').hidden=false;document.getElementById('pc-guide').hidden=true;document.getElementById('pc-live-tools').hidden=true;document.getElementById('pc-actions').hidden=true;document.getElementById('pc-edit-tools').hidden=false;document.getElementById('pc-review-actions').hidden=false;
- await proCameraAutoDetect();if(!pcScanResult)await proCameraRender();proCameraSetStatus(pcScanResult?'تم اكتشاف الأركان الأربعة وتصحيح المنظور تلقائيًا.':'لم يتم اكتشاف الحدود تلقائيًا؛ يمكنك تعديلها يدويًا.');
+ await proCameraAutoDetect();
  }catch(e){proCameraSetStatus('تعذر التصوير: '+(e.message||'حاول مرة أخرى'))}
  finally{proCameraBusy=false;if(btn)btn.disabled=false}
 }

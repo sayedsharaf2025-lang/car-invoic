@@ -107,7 +107,7 @@ function pcPerspectiveCanvas(source){
 async function proCameraAutoDetect(){
  if(!pcOriginal)return false;
  const scanner=window.DocumentScanner;
- if(!scanner||typeof scanner.detectDocument!=='function'){proCameraSetStatus('محرك اكتشاف المستند غير محمل');return false}
+ if(!scanner||typeof scanner.detectDocument!=='function'){pcCorners=[[0,0],[1,0],[1,1],[0,1]];pcPerspective=true;pcEditingCorners=false;const edit=document.getElementById('pc-edit-detected');if(edit)edit.hidden=false;await proCameraRender();proCameraSetStatus('محرك الاكتشاف غير محمل؛ يمكنك تحديد الزوايا يدويًا.');return false}
  proCameraSetStatus('جارٍ اكتشاف حدود الورقة…');
  try{
   const maxSide=1400,scale=Math.min(1,maxSide/Math.max(pcOriginal.width,pcOriginal.height));

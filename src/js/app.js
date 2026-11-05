@@ -17,6 +17,7 @@ function modal(html){$('#sheet').innerHTML=html;$('#modal').classList.add('open'
 function closeModal(){$('#modal').classList.remove('open')}
 function isAdmin(){return !!PROFILE&&PROFILE.role==='admin'&&PROFILE.status==='approved'}
 function hasScreen(k){return isAdmin()||SCREEN_KEYS.includes(k)}
+function hasFinanceScreen(){return ['exp','add','log','manage','report'].some(hasScreen)}
 function canOpenScreen(t){if(t==='settings')return isAdmin();const key=SCREEN_LIST.some(x=>x[0]===t)?t:(GROUP[t]||t);return hasScreen(key)}
 function go(t,c,replace){if(!canOpenScreen(t)){toast('الشاشة دي مش ضمن صلاحيات حسابك');return}tab=t;ctx=c||{};history[replace?'replaceState':'pushState']({t,c:ctx},'');render()}
 window.addEventListener('popstate',e=>{if(e.state&&e.state.t){tab=e.state.t;ctx=e.state.c||{};render()}});
@@ -30,7 +31,7 @@ function render(){
  if(tab!=='settings'&&!canOpenScreen(tab)){const first=SCREEN_LIST.find(x=>hasScreen(x[0]));if(!first){app.innerHTML='<h1>لا توجد شاشات متاحة</h1><p class="empty">المدير لم يحدد لك صلاحيات مشاهدة الشاشات بعد.</p><button class="ghost wide" onclick="logout()">تسجيل الخروج</button>';document.querySelectorAll('nav button').forEach(b=>b.hidden=true);return}tab=first[0];ctx={}}
  app.innerHTML=window[VIEWS[tab]]?window[VIEWS[tab]]():'<p class="empty">الشاشة غير موجودة</p>';
  document.querySelectorAll('button[onclick^="go("]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/^go\('([^']+)'/);if(m){b.hidden=!canOpenScreen(m[1])}});
- document.querySelectorAll('nav button').forEach(b=>{const k=b.dataset.t;b.hidden=k==='settings'?!isAdmin():!hasScreen(k);b.classList.toggle('on',k===GROUP[tab])});
+ document.querySelectorAll('nav button').forEach(b=>{const k=b.dataset.t;b.hidden=k==='settings'?!isAdmin():k==='exp'?!hasFinanceScreen():!hasScreen(k);b.classList.toggle('on',k===GROUP[tab])});
  const key=tab+(ctx.id||'');if(key!==shownKey){shownKey=key;scrollTo(0,0)}
 }
 function viewLogin(){return `<h1>دفتر النقدية</h1><p class="empty" style="padding-top:0">سجّل دخولك لمتابعة بياناتك. إنشاء الحساب الجديد يحتاج موافقة المدير قبل استخدام التطبيق.</p><label>الإيميل</label><input id="em" type="email" autocomplete="email" dir="ltr"><label>كلمة السر (6 حروف على الأقل)</label><input id="pw" type="password" autocomplete="current-password" dir="ltr"><button class="go" onclick="doLogin(false)">دخول</button><button class="ghost wide" onclick="doLogin(true)">طلب إنشاء حساب</button>`}
@@ -69,7 +70,7 @@ async function editUserPermissions(id){
 }
 async function saveUserPermissions(){if(!isAdmin()||!SELECTED_USER)return;const ids=[...document.querySelectorAll('[data-screen]:checked')].map(x=>x.dataset.screen);await run(async()=>{const del=await sb.from('user_screen_permissions').delete().eq('user_id',SELECTED_USER);if(del.error)throw del.error;if(ids.length){const ins=await sb.from('user_screen_permissions').insert(ids.map(screen_key=>({user_id:SELECTED_USER,screen_key})));if(ins.error)throw ins.error}closeModal();toast('تم حفظ صلاحيات الشاشات')})}
 document.addEventListener('DOMContentLoaded',async()=>{
- history.replaceState({t:'exp',c:{}},'');document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.t));$('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
+ history.replaceState({t:'exp',c:{}},'');document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{const t=b.dataset.t;if(t==='exp'&&!hasScreen('exp')){const first=['add','log','manage','report'].find(hasScreen);if(first)go(first);else go('exp')}else go(t)});$('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
  sb.auth.onAuthStateChange((ev,s)=>{const u=s&&s.user;if(u&&(!ME||ME.id!==u.id)){ME=u;setTimeout(start,0)}else if(!u&&ME){ME=null;resetState();tab='exp';ctx={};setTimeout(render,0)}else if(u&&ME&&ev==='TOKEN_REFRESHED'){ME=u}});
  const {data,error}=await sb.auth.getSession();if(error)console.error(error);if(data.session){ME=data.session.user;start()}else{ME=null;render()}
 });

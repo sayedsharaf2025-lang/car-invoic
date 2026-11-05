@@ -17,7 +17,9 @@ async function loadExpenses(){
   const [w,a,t,src,debts]=await Promise.all([
     fetchAll(()=>sb.from('wallets').select('*').order('created_at').order('id')),
     fetchAll(()=>sb.from('accounts').select('*').order('created_at').order('id')),
-    fetchAll(()=>sb.from('transactions').select('*').order('tx_date',{ascending:false}).order('created_at',{ascending:false}).order('id'))
+    fetchAll(()=>sb.from('transactions').select('*').order('tx_date',{ascending:false}).order('created_at',{ascending:false}).order('id')),
+    fetchAll(()=>sb.from('money_sources').select('*').order('name')),
+    fetchAll(()=>sb.from('debts').select('*').order('debt_date',{ascending:false}))
   ]);
   S.wallets=w.map(x=>({id:x.id,name:x.name,type:x.type,opening:+x.opening_balance}));
   S.accounts=a.map(x=>({id:x.id,name:x.name}));

@@ -2,18 +2,19 @@
 const CameraPreviewPlugin=()=>((window.Capacitor||{}).Plugins||{}).CameraPreview||null;
 let proCameraBlobUrl=null,proCameraFlash='off',proCameraModes=[],proCameraResolve=null,proCameraBusy=false;
 let pcOriginal=null,pcRotation=0,pcEnhance=true,pcGray=false,pcCrop=0,pcZoom=1,pcMaxZoom=1;
+let pcScanResult=null,pcDetectedCorners=null,pcCornerEditor=null;
 let pcPerspective=false,pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]],pcDrag=-1;
 function cameraOverlayHtml(){return `<section id="pro-camera" role="dialog" aria-modal="true" aria-label="كاميرا المستندات">
 <header class="pc-top"><button class="pc-icon" onclick="proCameraCancel()" aria-label="إغلاق">✕</button><span>ماسح مستندات السيارة</span><button class="pc-icon" id="pc-flash" onclick="proCameraToggleFlash()" aria-label="الفلاش">⚡</button></header>
 <div class="pc-hint" id="pc-hint">ضع المستند كاملًا داخل الإطار واجعل الهاتف موازيًا له</div>
 <div class="pc-guide" id="pc-guide"><i></i><i></i><i></i><i></i><div class="pc-guide-label">حافظ على ظهور أركان المستند</div></div>
-<div class="pc-review" id="pc-review" hidden><div class="pc-crop-stage"><canvas id="pc-canvas"></canvas><svg id="pc-corners" class="pc-corners" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="pc-poly" points="80,80 920,80 920,920 80,920"></polygon><circle data-corner="0" cx="80" cy="80" r="24"></circle><circle data-corner="1" cx="920" cy="80" r="24"></circle><circle data-corner="2" cx="920" cy="920" r="24"></circle><circle data-corner="3" cx="80" cy="920" r="24"></circle></svg></div></div>
+<div class="pc-review" id="pc-review" hidden><div class="pc-crop-stage"><canvas id="pc-canvas"></canvas><div id="pc-scan-editor" class="pc-scan-editor"></div><svg id="pc-corners" class="pc-corners" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon id="pc-poly" points="80,80 920,80 920,920 80,920"></polygon><circle data-corner="0" cx="80" cy="80" r="24"></circle><circle data-corner="1" cx="920" cy="80" r="24"></circle><circle data-corner="2" cx="920" cy="920" r="24"></circle><circle data-corner="3" cx="80" cy="920" r="24"></circle></svg></div></div>
 <div class="pc-bottom">
 <div class="pc-live-tools" id="pc-live-tools"><button onclick="proCameraZoom(-1)">− تقريب</button><span id="pc-zoom-label">1×</span><button onclick="proCameraZoom(1)">+ تقريب</button><span class="pc-tip">ثبّت الهاتف وتجنب الظلال</span></div>
 <div class="pc-edit-tools" id="pc-edit-tools" hidden>
 <div class="pc-edit-row"><button onclick="proCameraRotate()">↻ تدوير</button><button id="pc-enhance" class="selected" onclick="proCameraToggleEnhance()">تحسين الوضوح</button><button id="pc-gray" onclick="proCameraToggleGray()">أبيض وأسود</button></div>
 <label>قص الحواف <input id="pc-crop" type="range" min="0" max="15" value="0" oninput="proCameraSetCrop(this.value)"></label>
-<div class="pc-edit-row"><button id="pc-auto-detect" onclick="proCameraAutoDetect()">اكتشاف الورقة تلقائيًا</button><button id="pc-perspective" onclick="proCameraTogglePerspective()">تصحيح المنظور</button><button onclick="proCameraResetCorners()">إعادة ضبط الأركان</button></div><div class="pc-edit-note" id="pc-corner-note">اسحب الدوائر الأربع لتحديد أركان الورقة بدقة</div></div>
+<div class="pc-edit-row"><button id="pc-auto-detect" onclick="proCameraAutoDetect()">اكتشاف الورقة تلقائيًا</button><button id="pc-edit-detected" onclick="proCameraEditDetectedCorners()" hidden>تعديل الأركان يدويًا</button><button id="pc-perspective" onclick="proCameraTogglePerspective()">تصحيح المنظور</button><button onclick="proCameraResetCorners()">إعادة ضبط الأركان</button></div><div class="pc-edit-note" id="pc-corner-note">اسحب الدوائر الأربع لتحديد أركان الورقة بدقة</div></div>
 <div class="pc-actions" id="pc-actions"><button class="pc-cancel" onclick="proCameraCancel()">إلغاء</button><button class="pc-shutter" id="pc-shutter" onclick="proCameraCapture()"><span></span></button><button class="pc-flip" onclick="proCameraFlip()">↻</button></div>
 <div class="pc-review-actions" id="pc-review-actions" hidden><button class="pc-cancel" onclick="proCameraRetake()">إعادة التصوير</button><button class="pc-accept" onclick="proCameraAccept()">استخدام الصورة</button></div>
 <div class="pc-status" id="pc-status">جارٍ تشغيل الكاميرا…</div></div></section>`;}
@@ -27,7 +28,7 @@ async function proCameraStart(){
  pcZoom=1;proCameraSetStatus('اقترب من المستند مع إظهار الأركان الأربعة');
 }
 async function proCameraStop(){const cp=CameraPreviewPlugin();if(cp)try{await cp.stop()}catch{}}
-function proCameraCleanup(){document.body.classList.remove('cam-active');document.getElementById('pro-camera')?.remove();if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;pcOriginal=null;proCameraFlash='off';proCameraModes=[]}
+function proCameraCleanup(){document.body.classList.remove('cam-active');document.getElementById('pro-camera')?.remove();if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}proCameraFlash='off';proCameraModes=[]}
 function captureDocumentImage(){
  const cp=CameraPreviewPlugin();if(!isNative()||!cp)return pickImage();
  if(proCameraResolve)return Promise.reject(Error('الكاميرا مفتوحة بالفعل'));
@@ -38,16 +39,16 @@ async function proCameraZoom(dir){const cp=CameraPreviewPlugin();if(!cp)return;c
 async function proCameraCapture(){
  if(proCameraBusy)return;proCameraBusy=true;const btn=document.getElementById('pc-shutter');if(btn)btn.disabled=true;
  try{proCameraSetStatus('جارٍ التقاط الصورة الأصلية…');const cp=CameraPreviewPlugin(),r=await cp.capture({quality:100});const raw=String(r.value||r.base64String||'').replace(/^data:[^,]*;base64,/i,'');if(!raw)throw Error('لم يتم التقاط صورة');
- const blob=b64ToBlob(raw,'image/jpeg');pcOriginal=await proCameraLoadImage(blob);pcRotation=0;pcEnhance=true;pcGray=false;pcCrop=0;pcPerspective=false;pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]];await proCameraStop();
+ const blob=b64ToBlob(raw,'image/jpeg');pcOriginal=await proCameraLoadImage(blob);pcScanResult=null;pcDetectedCorners=null;pcRotation=0;pcEnhance=true;pcGray=false;pcCrop=0;pcPerspective=false;pcCorners=[[.08,.08],[.92,.08],[.92,.92],[.08,.92]];await proCameraStop();
  document.getElementById('pc-review').hidden=false;document.getElementById('pc-guide').hidden=true;document.getElementById('pc-live-tools').hidden=true;document.getElementById('pc-actions').hidden=true;document.getElementById('pc-edit-tools').hidden=false;document.getElementById('pc-review-actions').hidden=false;
- await proCameraRender();proCameraSetStatus('الصورة جاهزة للمراجعة والتحسين');
+ await proCameraAutoDetect();if(!pcScanResult)await proCameraRender();proCameraSetStatus(pcScanResult?'تم اكتشاف الأركان الأربعة وتصحيح المنظور تلقائيًا.':'لم يتم اكتشاف الحدود تلقائيًا؛ يمكنك تعديلها يدويًا.');
  }catch(e){proCameraSetStatus('تعذر التصوير: '+(e.message||'حاول مرة أخرى'))}
  finally{proCameraBusy=false;if(btn)btn.disabled=false}
 }
 function proCameraLoadImage(blob){return new Promise((resolve,reject)=>{const u=URL.createObjectURL(blob),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('تعذر قراءة الصورة'))};im.src=u})}
 async function proCameraRender(){
  if(!pcOriginal)return;
- const im=pcOriginal,rot=((pcRotation%360)+360)%360,swap=rot===90||rot===270;
+ const im=pcScanResult||pcOriginal,rot=((pcRotation%360)+360)%360,swap=rot===90||rot===270;
  const w=swap?im.height:im.width,h=swap?im.width:im.height;
  const work=document.createElement('canvas');work.width=w;work.height=h;
  let ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});
@@ -72,7 +73,7 @@ async function proCameraRender(){
  const e=document.getElementById('pc-enhance'),g=document.getElementById('pc-gray');if(e)e.classList.toggle('selected',pcEnhance);if(g)g.classList.toggle('selected',pcGray);
  proCameraUpdateCorners();
 }
-async function proCameraRetake(){pcOriginal=null;document.getElementById('pc-review').hidden=true;document.getElementById('pc-guide').hidden=false;document.getElementById('pc-live-tools').hidden=false;document.getElementById('pc-actions').hidden=false;document.getElementById('pc-edit-tools').hidden=true;document.getElementById('pc-review-actions').hidden=true;if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;try{await proCameraStart()}catch(e){proCameraSetStatus('تعذر إعادة تشغيل الكاميرا')}}
+async function proCameraRetake(){pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}document.getElementById('pc-review').hidden=true;document.getElementById('pc-guide').hidden=false;document.getElementById('pc-live-tools').hidden=false;document.getElementById('pc-actions').hidden=false;document.getElementById('pc-edit-tools').hidden=true;document.getElementById('pc-review-actions').hidden=true;if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;try{await proCameraStart()}catch(e){proCameraSetStatus('تعذر إعادة تشغيل الكاميرا')}}
 async function proCameraRotate(){pcRotation=(pcRotation+90)%360;await proCameraRender()}
 async function proCameraToggleEnhance(){pcEnhance=!pcEnhance;await proCameraRender()}
 async function proCameraToggleGray(){pcGray=!pcGray;if(pcGray)pcEnhance=false;await proCameraRender()}
@@ -122,10 +123,34 @@ function pcDetectDocumentCorners(canvas){
  return winner.corners.map(v=>[v[0],v[1]]);
 }
 async function proCameraAutoDetect(){
- const c=document.getElementById('pc-canvas');if(!c||!c.width)return;
- proCameraSetStatus('جارٍ تحليل الصورة والبحث عن حدود الورقة…');
- await new Promise(r=>requestAnimationFrame(r));
- try{const corners=pcDetectDocumentCorners(c);if(!corners){proCameraSetStatus('لم أتمكن من تحديد الورقة بوضوح. قرّب الورقة أو استخدم تحديد الأركان يدويًا.');return}
- pcCorners=corners;pcPerspective=true;const overlay=document.getElementById('pc-corners'),btn=document.getElementById('pc-perspective');if(overlay)overlay.style.display='block';if(btn)btn.classList.add('selected');proCameraUpdateCorners();await proCameraRender();proCameraSetStatus('تم اكتشاف حدود الورقة. راجع الأركان قبل الحفظ.');
- }catch(e){proCameraSetStatus('تعذر اكتشاف الحواف: '+(e.message||'خطأ غير متوقع'))}
+ if(!pcOriginal)return;
+ const lib=window.Scanic;
+ if(!lib||typeof lib.scanDocument!=='function'){proCameraSetStatus('مكتبة اكتشاف المستند غير محملة؛ الصورة الأصلية محفوظة.');return}
+ proCameraSetStatus('جارٍ البحث عن الأركان الأربعة وتصحيح المنظور…');
+ try{
+  const detection=await lib.scanDocument(pcOriginal,{mode:'detect',maxProcessingDimension:1000});
+  if(!detection||!detection.success||!detection.corners){pcDetectedCorners=null;proCameraSetStatus('لم يتم العثور على أركان واضحة. يمكنك استخدام الصورة الأصلية.');return}
+  pcDetectedCorners=detection.corners;
+  const extracted=await lib.scanDocument(pcOriginal,{mode:'extract',output:'canvas',maxProcessingDimension:1000});
+  if(!extracted||!extracted.success||!extracted.output)throw Error('لم ينجح تصحيح المنظور');
+  pcScanResult=extracted.output;
+  const edit=document.getElementById('pc-edit-detected');if(edit)edit.hidden=false;
+  await proCameraRender();
+  proCameraSetStatus('تم اكتشاف الأركان الأربعة وتصحيح الصورة تلقائيًا.');
+ }catch(e){pcScanResult=null;proCameraSetStatus('تعذر التصحيح التلقائي: '+(e.message||'خطأ'));await proCameraRender()}
 }
+function proCameraEditDetectedCorners(){
+ const lib=window.Scanic,host=document.getElementById('pc-scan-editor'),canvas=document.getElementById('pc-canvas');
+ if(!lib||!lib.createCornerEditor||!lib.extractDocument||!pcOriginal||!pcDetectedCorners||!host||!canvas)return proCameraSetStatus('محرر الأركان غير متاح حاليًا');
+ if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}
+ canvas.style.visibility='hidden';host.style.display='block';host.innerHTML='';
+ try{
+  pcCornerEditor=lib.createCornerEditor({container:host,image:pcOriginal,corners:pcDetectedCorners,magnifier:{enabled:true,zoom:2,size:110},nudges:{enabled:true,steps:[1,5]},onConfirm:async corners=>{
+   try{proCameraSetStatus('جارٍ تطبيق الأركان المعدلة…');const result=await lib.extractDocument(pcOriginal,corners,{output:'canvas'});if(!result||!result.success||!result.output)throw Error('فشل قص المستند');pcScanResult=result.output;pcDetectedCorners=corners;
+    if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}host.style.display='none';host.innerHTML='';canvas.style.visibility='';await proCameraRender();proCameraSetStatus('تم تطبيق المحاذاة اليدوية بنجاح');
+   }catch(e){proCameraSetStatus('تعذر تطبيق الأركان: '+e.message)}
+  },onCancel:()=>{if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}host.style.display='none';host.innerHTML='';canvas.style.visibility=''}});
+ }catch(e){host.style.display='none';canvas.style.visibility='';proCameraSetStatus('تعذر فتح محرر الأركان: '+e.message)}
+}
+
+// Scanic corner editor is positioned over the review canvas.

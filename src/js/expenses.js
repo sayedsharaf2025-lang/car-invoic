@@ -283,7 +283,7 @@ function viewDebtReport(){
  <p class="muted">إجمالي السلف المسجلة: ${fmt(totalInitial)} ج.م</p>
  ${rows.map(d=>{const repaid=round2(d.initial-d.remaining),payments=S.tx.filter(t=>t.debtId===d.id&&t.debtAction==='repayment');return `<div class="card-item"><b>${esc(d.person)}</b><div class="kv"><span>أصل السلفة</span><b class="num">${fmt(d.initial)}</b></div><div class="kv"><span>المسدد</span><b class="num pos">${fmt(repaid)}</b></div><div class="kv"><span>المتبقي عليه</span><b class="num ${d.remaining?'neg':'pos'}">${fmt(d.remaining)}</b></div><small>${esc(d.date)} · ${esc(d.note||'')}</small><h3>دفعات السداد</h3>${payments.map(p=>`<div class="kv"><span>${esc(p.d)}</span><b class="num pos">${fmt(p.a)}</b></div>`).join('')||'<small>لم يتم السداد بعد</small>'}<button class="ghost wide" onclick="repayDebtQuick('${d.id}')">تسجيل سداد</button></div>`}).join('')||'<p class="empty">لا توجد مديونيات مسجلة.</p>'}`;
 }
-function repayDebtQuick(id){go('add');setTimeout(()=>{setKind('c');setDepositMode('repay');const el=$('#repayDebt');if(el)el.value=id},0)}
+function repayDebtQuick(id){if(!hasScreen('add'))return toast('لا توجد لديك صلاحية تسجيل السداد');go('add');setTimeout(()=>{setKind('c');setDepositMode('repay');const el=$('#repayDebt');if(el)el.value=id},0)}
 
 function renderReport(){const m=$('#rm')?$('#rm').value:F.m||today().slice(0,7);F.m=m;const el=$('#reportBody');if(el)el.innerHTML=reportHtml(m);else render()}
 function reportMonthEnd(m){const y=Number(m.slice(0,4)),mo=Number(m.slice(5,7)),d=new Date(y,mo,0).getDate();return m+'-'+String(d).padStart(2,'0')}

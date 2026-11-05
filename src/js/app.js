@@ -17,7 +17,8 @@ function modal(html){$('#sheet').innerHTML=html;$('#modal').classList.add('open'
 function closeModal(){$('#modal').classList.remove('open')}
 function isAdmin(){return !!PROFILE&&PROFILE.role==='admin'&&PROFILE.status==='approved'}
 function hasScreen(k){return isAdmin()||SCREEN_KEYS.includes(k)}
-function go(t,c,replace){if(t!=='settings'&&!hasScreen(t)){toast('الشاشة دي مش ضمن صلاحيات حسابك');return}if(t==='settings'&&!isAdmin()){toast('الإعدادات متاحة للمدير فقط');return}tab=t;ctx=c||{};history[replace?'replaceState':'pushState']({t,c:ctx},'');render()}
+function canOpenScreen(t){if(t==='settings')return isAdmin();const key=SCREEN_LIST.some(x=>x[0]===t)?t:(GROUP[t]||t);return hasScreen(key)}
+function go(t,c,replace){if(!canOpenScreen(t)){toast('الشاشة دي مش ضمن صلاحيات حسابك');return}tab=t;ctx=c||{};history[replace?'replaceState':'pushState']({t,c:ctx},'');render()}
 window.addEventListener('popstate',e=>{if(e.state&&e.state.t){tab=e.state.t;ctx=e.state.c||{};render()}});
 function render(){
  closeModal();const app=$('#app');
@@ -26,9 +27,9 @@ function render(){
  if(!PROFILE){app.innerHTML=loadingHtml();return}
  if(PROFILE.status!=='approved'){app.innerHTML=viewPending();document.body.classList.add('out');return}
  if(tab==='settings'&&!isAdmin())tab='exp';
- if(tab!=='settings'&&!hasScreen(tab)){const first=SCREEN_LIST.find(x=>hasScreen(x[0]));if(!first){app.innerHTML='<h1>لا توجد شاشات متاحة</h1><p class="empty">المدير لم يحدد لك صلاحيات مشاهدة الشاشات بعد.</p><button class="ghost wide" onclick="logout()">تسجيل الخروج</button>';document.querySelectorAll('nav button').forEach(b=>b.hidden=true);return}tab=first[0];ctx={}}
+ if(tab!=='settings'&&!canOpenScreen(tab)){const first=SCREEN_LIST.find(x=>hasScreen(x[0]));if(!first){app.innerHTML='<h1>لا توجد شاشات متاحة</h1><p class="empty">المدير لم يحدد لك صلاحيات مشاهدة الشاشات بعد.</p><button class="ghost wide" onclick="logout()">تسجيل الخروج</button>';document.querySelectorAll('nav button').forEach(b=>b.hidden=true);return}tab=first[0];ctx={}}
  app.innerHTML=window[VIEWS[tab]]?window[VIEWS[tab]]():'<p class="empty">الشاشة غير موجودة</p>';
- document.querySelectorAll('button[onclick^="go("]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/^go\('([^']+)'/);if(m){const target=GROUP[m[1]]||m[1];b.hidden=target==='settings'?!isAdmin():!hasScreen(target)}});
+ document.querySelectorAll('button[onclick^="go("]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/^go\('([^']+)'/);if(m){b.hidden=!canOpenScreen(m[1])}});
  document.querySelectorAll('nav button').forEach(b=>{const k=b.dataset.t;b.hidden=k==='settings'?!isAdmin():!hasScreen(k);b.classList.toggle('on',k===GROUP[tab])});
  const key=tab+(ctx.id||'');if(key!==shownKey){shownKey=key;scrollTo(0,0)}
 }

@@ -28,7 +28,7 @@ function render(){
  if(tab==='settings'&&!isAdmin())tab='exp';
  if(tab!=='settings'&&!hasScreen(tab)){const first=SCREEN_LIST.find(x=>hasScreen(x[0]));if(!first){app.innerHTML='<h1>لا توجد شاشات متاحة</h1><p class="empty">المدير لم يحدد لك صلاحيات مشاهدة الشاشات بعد.</p><button class="ghost wide" onclick="logout()">تسجيل الخروج</button>';document.querySelectorAll('nav button').forEach(b=>b.hidden=true);return}tab=first[0];ctx={}}
  app.innerHTML=window[VIEWS[tab]]?window[VIEWS[tab]]():'<p class="empty">الشاشة غير موجودة</p>';
- document.querySelectorAll('button[onclick^="go("]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/^go\\('([^']+)'/);if(m){const target=GROUP[m[1]]||m[1];b.hidden=target==='settings'?!isAdmin():!hasScreen(target)}});
+ document.querySelectorAll('button[onclick^="go("]').forEach(b=>{const m=(b.getAttribute('onclick')||'').match(/^go\('([^']+)'/);if(m){const target=GROUP[m[1]]||m[1];b.hidden=target==='settings'?!isAdmin():!hasScreen(target)}});
  document.querySelectorAll('nav button').forEach(b=>{const k=b.dataset.t;b.hidden=k==='settings'?!isAdmin():!hasScreen(k);b.classList.toggle('on',k===GROUP[tab])});
  const key=tab+(ctx.id||'');if(key!==shownKey){shownKey=key;scrollTo(0,0)}
 }

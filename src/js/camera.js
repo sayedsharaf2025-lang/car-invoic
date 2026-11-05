@@ -53,8 +53,8 @@ async function proCameraRender(){
  const work=document.createElement('canvas');work.width=w;work.height=h;
  let ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});
  ctx.save();ctx.translate(w/2,h/2);ctx.rotate(rot*Math.PI/180);ctx.drawImage(im,-im.width/2,-im.height/2);ctx.restore();
- if(pcCrop){const cut=Math.round(Math.min(w,h)*pcCrop/100),cw=Math.max(1,w-2*cut),ch=Math.max(1,h-2*cut),tmp=document.createElement('canvas');tmp.width=cw;tmp.height=ch;tmp.getContext('2d').drawImage(work,cut,cut,cw,ch,0,0,cw,ch);work.width=cw;work.height=ch;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
  if(pcPerspective&&!pcEditingCorners){const warped=pcPerspectiveCanvas(work);work.width=warped.width;work.height=warped.height;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(warped,0,0)}
+ if(pcCrop){const cut=Math.round(Math.min(w,h)*pcCrop/100),cw=Math.max(1,w-2*cut),ch=Math.max(1,h-2*cut),tmp=document.createElement('canvas');tmp.width=cw;tmp.height=ch;tmp.getContext('2d').drawImage(work,cut,cut,cw,ch,0,0,cw,ch);work.width=cw;work.height=ch;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
  if(Math.max(work.width,work.height)>2800){const scale=2800/Math.max(work.width,work.height),nw=Math.max(1,Math.round(work.width*scale)),nh=Math.max(1,Math.round(work.height*scale)),tmp=document.createElement('canvas');tmp.width=nw;tmp.height=nh;tmp.getContext('2d',{alpha:false}).drawImage(work,0,0,nw,nh);work.width=nw;work.height=nh;ctx=work.getContext('2d',{alpha:false,willReadFrequently:true});ctx.drawImage(tmp,0,0)}
  const iw=work.width,ih=work.height;
  if(pcEnhance||pcGray){
@@ -72,7 +72,7 @@ async function proCameraRender(){
  proCameraUpdateCorners();
 }
 async function proCameraRetake(){pcOriginal=null;pcScanResult=null;pcDetectedCorners=null;pcEditingCorners=false;if(pcCornerEditor){pcCornerEditor.destroy();pcCornerEditor=null}document.getElementById('pc-review').hidden=true;document.getElementById('pc-guide').hidden=false;document.getElementById('pc-live-tools').hidden=false;document.getElementById('pc-actions').hidden=false;document.getElementById('pc-edit-tools').hidden=true;document.getElementById('pc-review-actions').hidden=true;const editBtn=document.getElementById('pc-edit-detected');if(editBtn)editBtn.hidden=true;if(proCameraBlobUrl)URL.revokeObjectURL(proCameraBlobUrl);proCameraBlobUrl=null;try{await proCameraStart()}catch(e){proCameraSetStatus('تعذر إعادة تشغيل الكاميرا')}}
-async function proCameraRotate(){pcRotation=(pcRotation+90)%360;await proCameraRender()}
+async function proCameraRotate(){pcRotation=(pcRotation+90)%360;if(pcPerspective)pcCorners=pcCorners.map(([x,y])=>[1-y,x]);proCameraUpdateCorners();await proCameraRender()}
 async function proCameraToggleEnhance(){pcEnhance=!pcEnhance;await proCameraRender()}
 async function proCameraToggleGray(){pcGray=!pcGray;if(pcGray)pcEnhance=false;await proCameraRender()}
 async function proCameraSetCrop(v){pcCrop=Number(v)||0;await proCameraRender()}

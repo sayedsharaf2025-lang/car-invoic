@@ -94,40 +94,13 @@ function pcValidCorners(points){
  for(let i=0;i<4;i++){const a=points[i],b=points[(i+1)%4],d=points[(i+2)%4],cross=(b[0]-a[0])*(d[1]-b[1])-(b[1]-a[1])*(d[0]-b[0]);if(Math.abs(cross)<.00001)return false;if(!sign)sign=Math.sign(cross);else if(Math.sign(cross)!==sign)return false;area+=a[0]*b[1]-b[0]*a[1]}
  return Math.abs(area)>.01;
 }
-function pcSolveHomography(q){const A=[],b=[],dst=[[0,0],[1,0],[1,1],[0,1]];for(let i=0;i<4;i++){const u=dst[i][0],v=dst[i][1],x=q[i][0],y=q[i][1];A.push([u,v,1,0,0,0,-u*x,-v*x]);b.push(x);A.push([0,0,0,u,v,1,-u*y,-v*y]);b.push(y)}for(let i=0;i<8;i++){let k=i;for(let j=i+1;j<8;j++)if(Math.abs(A[j][i])>Math.abs(A[k][i]))k=j;if(Math.abs(A[k][i])<1e-10)throw Error('الأركان متداخلة');[A[i],A[k]]=[A[k],A[i]];[b[i],b[k]]=[b[k],b[i]];const z=A[i][i];for(let c=i;c<8;c++)A[i][c]/=z;b[i]/=z;for(let j=0;j<8;j++)if(j!==i){const v=A[j][i];for(let c=i;c<8;c++)A[j][c]-=v*A[i][c];b[j]-=v*b[i]}}return [...b,1]}
-function pcPerspectiveCanvas(source){const q=pcCorners.map(v=>[v[0]*(source.width-1),v[1]*(source.height-1)]),dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),width=Math.max(300,Math.round((dist(q[0],q[1])+dist(q[3],q[2]))/2)),height=Math.max(300,Math.round((dist(q[0],q[3])+dist(q[1],q[2]))/2)),scale=Math.min(1,2800/Math.max(width,height)),w=Math.round(width*scale),h=Math.round(height*scale),H=pcSolveHomography(q),a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],k=H[7],out=document.createElement('canvas');out.width=w;out.height=h;const ctx=out.getContext('2d',{willReadFrequently:true}),src=document.createElement('canvas');src.width=source.width;src.height=source.height;src.getContext('2d').drawImage(source,0,0);const si=src.getContext('2d',{willReadFrequently:true}).getImageData(0,0,source.width,source.height),od=ctx.createImageData(w,h),S=si.data,O=od.data,sw=source.width,sh=source.height;for(let y=0;y<h;y++){const v=y/(h-1||1);for(let x=0;x<w;x++){const u=x/(w-1||1),den=g*u+k*v+1,sx=Math.max(0,Math.min(sw-1,(a*u+b*v+c)/den)),sy=Math.max(0,Math.min(sh-1,(d*u+e*v+f)/den)),x0=Math.floor(sx),y0=Math.floor(sy),x1=Math.min(sw-1,x0+1),y1=Math.min(sh-1,y0+1),fx=sx-x0,fy=sy-y0,p=(y*w+x)*4,z00=(y0*sw+x0)*4,z10=(y0*sw+x1)*4,z01=(y1*sw+x0)*4,z11=(y1*sw+x1)*4;for(let ch=0;ch<3;ch++){const top=S[z00+ch]*(1-fx)+S[z10+ch]*fx,bot=S[z01+ch]*(1-fx)+S[z11+ch]*fx;O[p+ch]=top*(1-fy)+bot*fy}O[p+3]=255}}ctx.putImageData(od,0,0);return out}
-
-function pcDetectDocumentCorners(canvas){
- const maxSide=360,scale=Math.min(1,maxSide/Math.max(canvas.width,canvas.height)),w=Math.max(2,Math.round(canvas.width*scale)),h=Math.max(2,Math.round(canvas.height*scale));
- const sample=document.createElement('canvas');sample.width=w;sample.height=h;const sc=sample.getContext('2d',{willReadFrequently:true});sc.drawImage(canvas,0,0,w,h);
- const rgba=sc.getImageData(0,0,w,h).data,n=w*h,gray=new Uint8Array(n),hist=new Uint32Array(256);
- for(let i=0,p=0;i<rgba.length;i+=4,p++){const v=Math.round(.299*rgba[i]+.587*rgba[i+1]+.114*rgba[i+2]);gray[p]=v;hist[v]++}
- let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let bg=0,wb=0,best=-1,threshold=128;
- for(let t=0;t<256;t++){bg+=hist[t];if(!bg)continue;wb=n-bg;if(!wb)break;const mb=graySum(hist,t)/bg,mf=(sum-graySum(hist,t))/(wb),score=bg*wb*(mb-mf)*(mb-mf);if(score>best){best=score;threshold=t}}
- function graySum(histogram,t){let z=0;for(let j=0;j<=t;j++)z+=j*histogram[j];return z}
- let winner=null;
- for(const invert of [false,true]){
-  const seen=new Uint8Array(n),queue=new Int32Array(n);
-  for(let p=0;p<n;p++){
-   if(seen[p])continue;const on=invert?gray[p]<threshold:gray[p]>=threshold;if(!on){seen[p]=1;continue}
-   let head=0,tail=0;queue[tail++]=p;seen[p]=1;let minX=w,minY=h,maxX=0,maxY=0,count=0;const boundary=[];
-   while(head<tail){const q=queue[head++],x=q%w,y=(q/w)|0;count++;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
-    let edge=false;for(const [nx,ny] of [[x-1,y],[x+1,y],[x,y-1],[x,y+1]]){if(nx<0||ny<0||nx>=w||ny>=h){edge=true;continue}const z=ny*w+nx,valid=invert?gray[z]<threshold:gray[z]>=threshold;if(!valid)edge=true;else if(!seen[z]){seen[z]=1;queue[tail++]=z}}
-    if(edge)boundary.push([x,y]);
-   }
-   const bw=maxX-minX+1,bh=maxY-minY+1,box=bw*bh,ratio=box/n;
-   if(count<n*.12||ratio<.15||ratio>.96||bw< w*.25||bh<h*.2||minX<2||minY<2||maxX>w-3||maxY>h-3)continue;
-   const pts=boundary.length>12000?boundary.filter((_,i)=>i%Math.ceil(boundary.length/12000)===0):boundary;
-   let tl=null,tr=null,br=null,bl=null,lo=Infinity,hi=-Infinity,loD=Infinity,hiD=-Infinity;
-   for(const pt of pts){const x=pt[0],y=pt[1],sumv=x+y,diff=x-y;if(sumv<lo){lo=sumv;tl=pt}if(sumv>hi){hi=sumv;br=pt}if(diff>hiD){hiD=diff;tr=pt}if(diff<loD){loD=diff;bl=pt}}
-   if(!tl||!tr||!br||!bl)continue;
-   const area=Math.abs((tl[0]*tr[1]+tr[0]*br[1]+br[0]*bl[1]+bl[0]*tl[1])-(tl[1]*tr[0]+tr[1]*br[0]+br[1]*bl[0]+bl[1]*tl[0]))/2;
-   const score=area*(count/box);
-   if(!winner||score>winner.score)winner={score,corners:[tl,tr,br,bl].map(pt=>[Math.max(0,Math.min(1,pt[0]/(w-1))),Math.max(0,Math.min(1,pt[1]/(h-1)))])};
-  }
- }
- if(!winner)return null;
- return winner.corners.map(v=>[v[0],v[1]]);
+function pcPerspectiveCanvas(source){
+ const scanner=window.DocumentScanner;if(!scanner)throw Error('محرك تصحيح المنظور غير محمل');
+ const q=pcCorners.map(v=>({x:v[0]*(source.width-1),y:v[1]*(source.height-1)}));
+ const size=scanner.outputSize(q,2800),ctx0=source.getContext('2d',{willReadFrequently:true}),input=ctx0.getImageData(0,0,source.width,source.height);
+ const pixels=scanner.warpPerspective(input.data,source.width,source.height,q,size.w,size.h);
+ const out=document.createElement('canvas');out.width=size.w;out.height=size.h;
+ const ctx=out.getContext('2d',{alpha:false});const frame=ctx.createImageData(size.w,size.h);frame.data.set(pixels);ctx.putImageData(frame,0,0);return out;
 }
 async function proCameraAutoDetect(){
  if(!pcOriginal)return false;

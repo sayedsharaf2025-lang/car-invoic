@@ -3,7 +3,7 @@
   "version": "3.0.0",
   "private": true,
   "scripts": {
-    "web": "mkdir -p www && cp -r src/* www/ && cp node_modules/@supabase/supabase-js/dist/umd/supabase.js www/supabase.js && cp node_modules/jspdf/dist/jspdf.umd.min.js www/jspdf.js",
+    "web": "mkdir -p www && cp -r src/* www/ && npx esbuild src/js/camera-libs-entry.js --bundle --format=iife --outfile=www/js/camera-libs.js && cp node_modules/@supabase/supabase-js/dist/umd/supabase.js www/supabase.js && cp node_modules/jspdf/dist/jspdf.umd.min.js www/jspdf.js",
     "sync": "npm run web && npx cap sync android",
     "patch-android": "node scripts/patch-android.js"
   },
@@ -17,6 +17,11 @@
     "@capacitor-community/speech-recognition": "^6.0.0",
     "@supabase/supabase-js": "2.58.0",
     "jspdf": "^2.5.1",
-    "@capacitor-community/camera-preview": "6.0.1"
+    "@capacitor-community/camera-preview": "6.0.1",
+    "scanic": "^1.7.1",
+    "browser-image-compression": "^2.0.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }

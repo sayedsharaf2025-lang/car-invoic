@@ -46,7 +46,7 @@ revoke all on function private.is_workspace_admin() from public;
 grant execute on function private.current_workspace_owner() to authenticated;
 grant execute on function private.is_workspace_admin() to authenticated;
 
-create or replace function public.handle_new_app_user()
+create or replace function private.handle_new_app_user()
 returns trigger language plpgsql security definer set search_path = ''
 as $$
 declare
@@ -62,7 +62,7 @@ $$;
 drop trigger if exists on_auth_user_created_app_user on auth.users;
 create trigger on_auth_user_created_app_user
 after insert on auth.users
-for each row execute function public.handle_new_app_user();
+for each row execute function private.handle_new_app_user();
 
 insert into public.app_users(user_id,email,display_name,status,role,workspace_owner_id,approved_at)
 values ('a74a8bf0-cdfd-4cb5-bd0f-30e5b0129290'::uuid,
